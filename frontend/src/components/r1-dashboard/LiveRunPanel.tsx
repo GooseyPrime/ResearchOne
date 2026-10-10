@@ -46,11 +46,13 @@ import { useRunTraceStream } from '@/hooks/useRunTraceStream';
 import { cancelResearchRun, getResearchRuns, retryResearchRunFromFailure, type ResearchRun } from '@/utils/api';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import {
+  RETRY_NOT_CONFIRMED,
   RUN_COULD_NOT_FINISH,
   SEND_AS_NEW_REQUEST,
   customerFailureText,
   retryRefusalFromError,
   retryRefusedText,
+  runCanBeRunAgain,
   sentenceForRunThatCannotRunAgain,
 } from '@/utils/customerFailureText';
 import { getSocket } from '@/utils/socket';
@@ -106,15 +108,6 @@ const RUN_STEP_FOR_STAGE: Record<ResearchStage, RunStepId> = {
   report: 'formatter',
   complete: 'formatter',
 };
-
-/**
- * Whether the run's stored failure record says it may be run again: the test
- * the server applies before it does (`resumeAvailable` is the flag's older name).
- */
-function storedAsRunnableAgain(run: ResearchRun): boolean {
-  const meta = (run.failure_meta as Record<string, unknown> | undefined) ?? {};
-  return meta.retryable === true || meta.resumeAvailable === true;
-}
 
 function formatStarted(run: ResearchRun): string | null {
   const stamp = run.started_at || run.created_at;
@@ -343,7 +336,7 @@ export function LiveRunPanel() {
               <LiveResearchTraceLog
                 traceEvents={traceEvents}
                 showInternals={isAdmin}
-                runCanRunAgain={isTerminal ? storedAsRunnableAgain(run) : undefined}
+                runCanRunAgain={isTerminal ? runCanBeRunAgain(run) : undefined}
                 scrollClassName="max-h-[32rem]"
                 emptyMessage={
                   run.status === 'queued'
@@ -517,7 +510,10 @@ function RunOutcomePanel({ run, isAdmin = false }: { run: ResearchRun; isAdmin?:
   // way to do it, and the only way once a run can no longer be run again.
   const runAgain = useMutation({
     mutationFn: () => retryResearchRunFromFailure(run.id),
-    onSuccess: () => {
+    // Whatever the answer, the run is looked at again. When the request got no
+    // answer the run may have been queued all the same, and this is how the
+    // page finds out.
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['research-run', run.id] });
       void queryClient.invalidateQueries({ queryKey: ['research-runs'] });
     },
@@ -546,10 +542,14 @@ function RunOutcomePanel({ run, isAdmin = false }: { run: ResearchRun; isAdmin?:
     // no_evidence — and dropped the persisted retryability with it (Copilot).
     const meta = (run.failure_meta as Record<string, unknown> | undefined) ?? {};
     const gateStatus = typeof meta.gate_status === 'string' ? meta.gate_status : null;
-    const retryable = storedAsRunnableAgain(run);
+    const retryable = runCanBeRunAgain(run);
     // The server refused to run this run again (it answers 400 or 409 with a sentence).
     const refused = runAgain.isError ? retryRefusalFromError(runAgain.error) : null;
-    const canRunAgain = retryable && !runAgain.isError;
+    // The request failed some other way (no answer, a server error). That is
+    // not a refusal: the run may have been queued, so the button stays and the
+    // person is not sent to a new request, which would be a second run.
+    const notConfirmed = runAgain.isError && !refused;
+    const canRunAgain = retryable && !refused;
     // One plain sentence. The server sends it; if what arrived is the stored
     // error instead (the two halves deploy separately), it is not printed.
     const sentence =
@@ -575,9 +575,14 @@ function RunOutcomePanel({ run, isAdmin = false }: { run: ResearchRun; isAdmin?:
             {storedError}
           </p>
         )}
-        {runAgain.isError && (
+        {refused && (
           <p className="mt-2 text-xs text-r1-challenge" role="alert" data-testid="retry-refused">
-            {retryRefusedText(refused?.sentence)}
+            {retryRefusedText(refused.sentence)}
+          </p>
+        )}
+        {notConfirmed && (
+          <p className="mt-2 text-xs text-r1-challenge" role="alert" data-testid="retry-not-confirmed">
+            {RETRY_NOT_CONFIRMED}
           </p>
         )}
         {/* Why the server refused, in its own words. It sends this to administrators only. */}

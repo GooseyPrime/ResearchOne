@@ -218,6 +218,29 @@ describe('RJ-022B: the failure sentence of a run that cannot be run again', () =
     expect(sent.error_message).not.toContain('Run it again');
   });
 
+  it('reads the status before an old flag: a run stopped for good is not told to press "Run it again"', () => {
+    // An old row keeps `resumeAvailable: true` after the route stops the run for good
+    // (it changes the status and does not rewrite the record). The route refuses it.
+    const legacy = { classification: 'provider_unavailable', resumeAvailable: true };
+    const stoppedForGood = { ...row(legacy), status: 'aborted' };
+    expect(
+      decideRunStateOnRetryRequest({ currentStatus: 'aborted', currentFailureMeta: legacy, retryAttempts: 3, retryBudget: 3, resumePayload: null, expectedRunId: RUN_ID })
+    ).toMatchObject({ ok: false, reason: 'aborted' });
+
+    const sent = runRowForCustomer(stoppedForGood) as unknown as { error_message: string; progress_events: Array<{ message: string }> };
+    expect(sent.error_message).toContain('Press Send it as a new request');
+    expect(sent.error_message).not.toContain('Run it again');
+    expect(sent.progress_events[0].message).toBe(sent.error_message);
+
+    // The same record on a run that has only failed can be run again, and says so.
+    const failed = runRowForCustomer(row(legacy)) as unknown as { error_message: string };
+    expect(failed.error_message).toContain('Press Run it again');
+
+    // A record marked terminal is not run again whatever else it says.
+    const terminal = runRowForCustomer(row({ ...legacy, retryable: true, terminal: true })) as unknown as { error_message: string };
+    expect(terminal.error_message).toContain('Press Send it as a new request');
+  });
+
   it('the trace names the same button as the sentence above it, whatever the stored event says', () => {
     // A run that can be run again, whose stored stop line says it could not be.
     const stale = row({ ...STORED_402_META, retryable: true, terminal: false });
