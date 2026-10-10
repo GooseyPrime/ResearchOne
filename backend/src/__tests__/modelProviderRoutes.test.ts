@@ -124,6 +124,7 @@ import {
   DEFAULT_MODEL_PROVIDER_ORDER,
   NVIDIA_DEFAULT_MODELS,
   ROUTE_MODEL_CLASS_BY_ROLE,
+  TOGETHER_BACKUP_MODELS,
   anthropicModelsByRole,
   nvidiaModelsByRole,
   parseModelProviderOrder,
@@ -267,16 +268,27 @@ describe('a role call when OpenRouter refuses for credit (402)', () => {
 });
 
 describe('a role call when OpenRouter refuses and Anthropic has no key', () => {
-  it('skips Anthropic and goes to the hub models (Hugging Face, then Together)', async () => {
+  it('skips Anthropic and goes to Together, with a model Together serves', async () => {
     h.openrouter = () => 402;
     config.anthropic.apiKey = '';
-    h.hub = () => 'fail';
+
+    const result = await call();
+
+    expect(providersCalled()).toEqual(['openrouter', 'openrouter', 'together']);
+    expect(result.routeUsed).toEqual({ model: TOGETHER_BACKUP_MODELS[0], provider: 'together', position: 'cross_provider' });
+  });
+
+  it('goes to the hub models on Hugging Face when every Together model is refused', async () => {
+    h.openrouter = () => 402;
+    config.anthropic.apiKey = '';
+    h.together = () => 503;
 
     const result = await call();
 
     expect(providersCalled()).not.toContain('anthropic');
-    expect(providersCalled().slice(0, 4)).toEqual(['openrouter', 'openrouter', 'huggingface_inference', 'together']);
-    expect(result.routeUsed?.provider).toBe('together');
+    expect(providersCalled().filter((provider) => provider === 'together')).toHaveLength(TOGETHER_BACKUP_MODELS.length);
+    expect(providersCalled().lastIndexOf('together')).toBeLessThan(providersCalled().indexOf('huggingface_inference'));
+    expect(result.routeUsed?.provider).toBe('huggingface_inference');
   });
 
   it('goes on to NVIDIA when the hub models are refused as well', async () => {
@@ -289,9 +301,11 @@ describe('a role call when OpenRouter refuses and Anthropic has no key', () => {
 
     expect(providersCalled()).not.toContain('anthropic');
     expect(result.routeUsed).toEqual({ model: NVIDIA_DEFAULT_MODELS.strong, provider: 'nvidia', position: 'cross_provider' });
-    // NVIDIA comes after every hub model and before more models on the provider that refused first.
+    // NVIDIA comes after every Together and hub model and before more models on the provider that refused first.
     const nvidiaAt = providersCalled().indexOf('nvidia');
     expect(providersCalled().lastIndexOf('together')).toBeLessThan(nvidiaAt);
+    expect(providersCalled().lastIndexOf('huggingface_inference')).toBeLessThan(nvidiaAt);
+    expect(providersCalled()).toContain('huggingface_inference');
     expect(providersCalled().lastIndexOf('openrouter')).toBe(1);
     const request = h.sent[nvidiaAt];
     expect(request.url).toBe('https://integrate.api.nvidia.com/v1/chat/completions');
@@ -334,7 +348,7 @@ describe('a refusal from one of the added providers', () => {
 
     const result = await call();
 
-    expect(result.routeUsed?.provider).toBe('huggingface_inference');
+    expect(result.routeUsed?.provider).toBe('together');
     const refusal = result.routesTried?.find((attempt) => attempt.provider === 'anthropic');
     expect(refusal).toMatchObject({ outcome: 'refused', classification: 'quota_exceeded', status: 400 });
   });
@@ -430,6 +444,7 @@ describe('every role has a model on each added provider', () => {
       fallback: BACKUP,
       openrouterConfigured: true,
       hubConfigured: true,
+      togetherConfigured: true,
       anthropicConfigured: true,
       nvidiaConfigured: true,
     });
@@ -439,8 +454,13 @@ describe('every role has a model on each added provider', () => {
     expect(routes.filter((route) => route.via === 'nvidia')).toEqual([
       { model: nvidiaModelsByRole()[role], via: 'nvidia', position: 'cross_provider' },
     ]);
-    // OpenRouter and the hub (Hugging Face, Together) still have routes for the role.
-    expect(routes.some((route) => !route.via && route.position === 'cross_provider' && route.model.startsWith('deepseek-ai/'))).toBe(true);
+    // Together has its own serverless models for the role, in the listed order.
+    expect(routes.filter((route) => route.via === 'together')).toEqual(
+      TOGETHER_BACKUP_MODELS.map((model) => ({ model, via: 'together', position: 'cross_provider' }))
+    );
+    // OpenRouter and the hub (Hugging Face) still have routes for the role.
+    expect(routes.some((route) => !route.via && route.position === 'cross_provider' && route.model.startsWith('NousResearch/'))).toBe(true);
+    expect(routes.some((route) => !route.via && route.position === 'cross_provider' && route.model.startsWith('nousresearch/'))).toBe(true);
     expect(routes[0]).toEqual({ model: PRIMARY, position: 'primary' });
     expect(routes[1]).toEqual({ model: BACKUP, position: 'backup' });
   });
@@ -490,7 +510,7 @@ describe('the order providers are tried in', () => {
     }
     return out;
   };
-  const everything = { role: 'section_drafter' as const, primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: true, anthropicConfigured: true, nvidiaConfigured: true };
+  const everything = { role: 'section_drafter' as const, primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: true, togetherConfigured: true, anthropicConfigured: true, nvidiaConfigured: true };
 
   it('is OpenRouter, Anthropic, Together, NVIDIA by default', () => {
     expect(DEFAULT_MODEL_PROVIDER_ORDER).toEqual(['openrouter', 'anthropic', 'together', 'nvidia']);
