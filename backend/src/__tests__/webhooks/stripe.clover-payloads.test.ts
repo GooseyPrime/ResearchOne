@@ -446,6 +446,11 @@ describe('a subscription with no period end anywhere', () => {
 describe("another product's sale on the same Stripe account", () => {
   const foreignMetadata = { user_id: 'user_elsewhere', tier: 'pro', price_id: 'price_other_product' };
 
+  // None of these subscriptions is one we hold.
+  beforeEach(() => {
+    h.resolveUserIdFromStripeSubscription.mockResolvedValue(null);
+  });
+
   it.each([
     [
       'customer.subscription.created',
@@ -514,6 +519,17 @@ describe("another product's sale on the same Stripe account", () => {
     expect(h.query).not.toHaveBeenCalled();
   });
 
+  it('the stored subscription ids are consulted before an event is set aside', async () => {
+    await deliver({
+      id: 'evt_other_lookup',
+      type: 'customer.subscription.updated',
+      data: {
+        object: cloverSubscription({ id: 'sub_other', priceId: 'price_other_product', metadata: foreignMetadata }),
+      },
+    });
+    expect(h.resolveUserIdFromStripeSubscription).toHaveBeenCalledWith('sub_other');
+  });
+
   it('a ResearchOne add-on is recognised by its metadata even on a price no longer configured', async () => {
     const out = await deliver({
       id: 'evt_addon_old_price',
@@ -530,6 +546,53 @@ describe("another product's sale on the same Stripe account", () => {
 
     expect(out.body.status).toBe('processed');
     expect(h.recordBillingEvent).toHaveBeenCalledWith(expect.objectContaining({ eventKind: 'addon_canceled' }));
+  });
+});
+
+describe('a plan bought on a price that has since been retired', () => {
+  // No configured price, no ResearchOne metadata: only our own record of the
+  // subscription says it is ours.
+  const retired = { user_id: 'user_1', tier: 'pro', price_id: 'price_pro_retired' };
+
+  it('customer.subscription.deleted still ends the plan', async () => {
+    const out = await deliver({
+      id: 'evt_retired_deleted',
+      type: 'customer.subscription.deleted',
+      data: {
+        object: cloverSubscription({ priceId: 'price_pro_retired', status: 'canceled', metadata: retired }),
+      },
+    });
+
+    expect(h.resolveUserIdFromStripeSubscription).toHaveBeenCalledWith('sub_r1');
+    expect(out.status).toBe(200);
+    expect(out.body.status).toBe('processed');
+    expect(h.setUserTier).toHaveBeenCalledWith('user_1', 'free_demo');
+  });
+
+  it('invoice.payment_failed still reaches the subscriber', async () => {
+    const out = await deliver({
+      id: 'evt_retired_invoice_failed',
+      type: 'invoice.payment_failed',
+      data: { object: cloverInvoice({ priceId: 'price_pro_retired', metadata: retired }) },
+    });
+
+    expect(out.body.status).toBe('processed');
+    expect(h.createUserNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user_1', kind: 'payment_failed' })
+    );
+  });
+
+  it('customer.subscription.updated still stores the new status', async () => {
+    const out = await deliver({
+      id: 'evt_retired_updated',
+      type: 'customer.subscription.updated',
+      data: {
+        object: cloverSubscription({ priceId: 'price_pro_retired', status: 'unpaid', metadata: retired }),
+      },
+    });
+
+    expect(out.body.status).toBe('processed');
+    expect(lastSubscriptionWrite()[2]).toBe('unpaid');
   });
 });
 
