@@ -21,7 +21,7 @@ export default function PlanReviewBanner({ runs }: { runs: ResearchRun[] }) {
           <span className="truncate">
             <span className="font-medium">Research plan ready</span>
             <span className="text-amber-200/80 ml-2 hidden sm:inline">
-              Confirm or refine before the pipeline continues{more}.
+              Confirm the plan or change it. Nothing runs until you confirm{more}.
             </span>
           </span>
         </div>
