@@ -270,6 +270,8 @@ async function writeRow(
     model: result.model,
     provider: result.routeUsed?.provider,
     listPrice: result.listPrice,
+    // Every route of a call is the same model, so the role's own id names it too.
+    sameModelAs: result.routeUsed?.position === 'primary' ? null : result.primaryModel,
   });
   const calculatedCost = computeCostUsd(result.promptTokens, result.completionTokens, price);
   const phase = scope.phaseOverride ?? rolePhaseFor(opts.role, opts.callPurpose);
