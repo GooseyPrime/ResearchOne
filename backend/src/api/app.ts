@@ -19,6 +19,7 @@ import sourcesRoutes from './routes/sources';
 import healthRoutes from './routes/health';
 import landingRoutes from './routes/landing';
 import adminRoutes from './routes/admin';
+import adminProviderRoutes from './routes/adminProviders';
 import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
 import byokRoutes from './routes/byok';
@@ -152,6 +153,8 @@ const routes: Array<[string, express.Router]> = [
   ['/atlas', atlasRoutes],
   ['/graph', graphRoutes],
   ['/sources', sourcesRoutes],
+  // Before the main admin router: its own router, also behind requireAdmin.
+  ['/admin/providers', adminProviderRoutes],
   ['/admin', adminRoutes],
   ['/auth', authRoutes],
   ['/billing', billingRoutes],
