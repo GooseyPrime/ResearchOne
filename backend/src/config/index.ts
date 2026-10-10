@@ -187,6 +187,12 @@ const config = {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY || '',
     baseUrl: 'https://api.anthropic.com/v1',
+    /**
+     * Optional (RJ-024). When set, every Anthropic request carries it in the
+     * `anthropic-workspace-id` header, which a key that is not tied to one
+     * workspace needs. Leave it unset for a key created inside a workspace.
+     */
+    workspaceId: process.env.ANTHROPIC_WORKSPACE_ID?.trim() || '',
     models: {
       fast: process.env.ANTHROPIC_MODEL_FAST?.trim() || ANTHROPIC_DEFAULT_MODELS.fast,
       strong: process.env.ANTHROPIC_MODEL_STRONG?.trim() || ANTHROPIC_DEFAULT_MODELS.strong,
