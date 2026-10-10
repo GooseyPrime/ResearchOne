@@ -234,7 +234,14 @@ describe('what a customer is told', () => {
     void _text;
     void _id;
     const sent = runRowForCustomer({ ...row, status: 'aborted', failure_meta: older }) as unknown as Record<string, unknown>;
-    expect(sent.error_message).toBe(CUSTOMER_FAILURE_MESSAGES.ai_service_unavailable_writing);
+    // A run stopped for good cannot be run again, so its sentence names the link the page offers (RJ-022B).
+    expect(sent.error_message).toBe(
+      'The report could not be written because our AI service is temporarily unavailable. You have not been charged. Press Send it as a new request to start it fresh; you are only charged once, when a report is delivered.'
+    );
+    // The same row while it had only failed is told to press "Run it again".
+    expect((runRowForCustomer({ ...row, failure_meta: older }) as unknown as Record<string, unknown>).error_message).toBe(
+      CUSTOMER_FAILURE_MESSAGES.ai_service_unavailable_writing
+    );
     expectPlain(sentWithoutIds(sent));
   });
 

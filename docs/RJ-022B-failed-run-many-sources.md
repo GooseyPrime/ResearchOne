@@ -57,15 +57,22 @@ opens the five pages above in Chromium against the production build and writes a
 
 ## What changed
 
-**Diagnostics page: long lists are drawn a part at a time.** The search section printed the stored record whole, as JSON (390 KB in one block), and the list of results set aside drew all 292. Both, and the lists of sources used and findings, now draw the first 25 with a "Show all 317" button (`components/ui/ShowAllList.tsx`). The search section shows counts ("5 searches · 317 results found · 25 read · 292 not read"), the searches and the results (`components/research/DiscoverySummaryView.tsx`). Measured in Chromium: opening the search section went from 141 ms to 81 ms at 317 results and from 680 ms to 81 ms at 3,170; the page with everything open from 2,466 elements to 1,359, and from 17,151 to 1,414.
+**Diagnostics page: long lists are drawn a part at a time.** The search section printed the stored record whole, as JSON (390 KB in one block), and the list of results set aside drew all 292. Both, and the lists of sources used and findings, now draw the first 25 with a "Show all 317" button (`components/ui/ShowAllList.tsx`). The search section shows counts ("5 searches · 317 results found · 25 chosen to read · 292 not chosen"), the searches and the results (`components/research/DiscoverySummaryView.tsx`). Measured in Chromium: opening the search section went from 141 ms to 81 ms at 317 results and from 680 ms to 81 ms at 3,170; the page with everything open from 2,466 elements to 1,359, and from 17,151 to 1,414.
 
-A customer who opens diagnostics no longer sees the stored record's field names (`selectionRationale`, `ingestionJobId`, `score=0.98, rank=1`) or the stored plan as JSON; both are for administrators, as on the dossier page. A customer sees the sources read, by title.
+The list says "chosen to read", not "read": the stored record marks a result when it is put in line to be fetched and is not corrected if the fetch then fails. What the run did read is the page's "Sources used" list.
+
+A customer who opens diagnostics no longer sees the stored record's field names (`selectionRationale`, `ingestionJobId`, `score=0.98, rank=1`), the stored plan as JSON, the model profile, the engine, or "budget locked (…)"; those are for administrators, as on the dossier page. A customer sees the results the run chose, by title.
 
 **A run that cannot be run again says so in plain words.**
 
 - `POST /api/research/:id/retry-from-failure` answered a refusal with `"This failure is not retryable"` and `"The orchestrator classified this error as non-recoverable (auth / malformed request). Inspect the failure details and start a new run."`, and the page showed it. Every refusal now answers with one sentence in `error`: "This request can't be run again. Press Send it as a new request to start it fresh; you have not been charged." Why is still said, in `reason`, to administrators only (`retryRefusalForCustomer` takes it off for everyone else). `code` names the refusal for the page's logic.
 - The run page and the diagnostics page offer **Send it as a new request** whenever a run cannot be run again: when it was stored that way, and when the server has just refused. The link carries the request into a new one. An administrator also sees the server's reason.
 - The failure sentence of a run that cannot be run again no longer ends "Press Run it again", which named a button the page did not show. It ends "Press Send it as a new request to start it fresh; you are only charged once, when a report is delivered." The server sends it that way (`sentenceForRunThatCannotRunAgain` in `customerFailureMessage.ts`), in the run row and in the trace, and the page applies the same rule for a server older than itself.
+
+Two rules the pages follow, both from review of this change:
+
+- **An answer that is not a refusal is not treated as one.** The server refuses with 400 or 409. If asking for a run to be run again gets no answer, or a server error, the run may have been queued before the answer was lost. The page then says it could not confirm, looks at the run again, and leaves "Run it again" in place. It does not offer a new request, which could be a second run.
+- **The status is read before an old flag.** A run may be run again when it has failed (not been stopped for good), its record is not marked terminal, the record says it may be, and attempts remain: the server's own test, in the server's order (`runCanBeRunAgain` on the page, `canRunAgain` on the server). An old row can still say `resumeAvailable: true` after the run was stopped for good; the page no longer offers a button the server would refuse.
 
 ## Why this run cannot be run again
 
@@ -81,4 +88,4 @@ Its report writer was refused by OpenRouter for lack of credit (HTTP 402). The a
 - The harness stands in for the sign-in script and has no live socket, so it cannot show a fault in either.
 - No paid model call, and no call to production, was made. The 402 finding is from the code before and after #274, not from the stored row.
 
-Tests: `frontend/src/__tests__/rj022b/manySourcesPage.test.tsx` (11 of its 15 tests fail before this change; the four that pass before it are the fixture's size and the time bounds of pages that never froze in test), `frontend/src/__tests__/rj022b/longFrameLog.test.ts`, `backend/src/__tests__/rj022bRetryRefusal.test.ts`.
+Tests: `frontend/src/__tests__/rj022b/manySourcesPage.test.tsx` (all but four of its tests fail before this change; the four that pass before it are the fixture's size and the time bounds of pages that never froze in test), `frontend/src/__tests__/rj022b/diagnosticsCustomerView.test.tsx`, `frontend/src/__tests__/rj022b/longFrameLog.test.ts`, `backend/src/__tests__/rj022bRetryRefusal.test.ts`.
