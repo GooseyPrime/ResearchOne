@@ -241,7 +241,7 @@ describe('RJ-023: sign_up, begin_checkout and purchase', () => {
 });
 
 describe('RJ-023: the plan banner is in plain words', () => {
-  it('says what to do and that nothing runs before it', () => {
+  it('says what to do and that this run waits for it', () => {
     const run = { id: ID, status: 'plan_pending_confirmation' } as unknown as ResearchRun;
     render(
       <MemoryRouter>
@@ -249,7 +249,7 @@ describe('RJ-023: the plan banner is in plain words', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('Research plan ready')).toBeTruthy();
-    expect(screen.getByText('Confirm the plan or change it. Nothing runs until you confirm (+1 more).')).toBeTruthy();
+    expect(screen.getByText('Confirm the plan or change it. This run will not start until you confirm (+1 more).')).toBeTruthy();
     expect(document.body.textContent ?? '').not.toMatch(/pipeline|orchestrat/i);
   });
 });
