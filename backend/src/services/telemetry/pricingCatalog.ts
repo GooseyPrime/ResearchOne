@@ -150,16 +150,32 @@ async function findActivePrice(key: string): Promise<ModelPrice | null> {
  * The provider is part of the key because two providers can publish the same
  * model id at different prices, and a free NVIDIA call must not be costed at
  * a paid provider's price for a model of the same name.
+ *
+ * A Hugging Face Inference call that answered for a role whose own id is on
+ * another provider (RJ-025: the same model, reached under its hub id) is
+ * priced, in order, from: the row keyed `huggingface_inference:<hub id>`, the
+ * row for the bare hub id, and then the row for the role's own id
+ * (`sameModelAs`). The last one is an estimate: it is the same model at the
+ * other provider's price, used so the call is not recorded as free. Hugging
+ * Face publishes no single price for a model, because the host it picks sets
+ * the price. Add a `huggingface_inference:<hub id>` row to replace the estimate.
  */
 export async function getCallPrice(args: {
   model: string;
   provider?: string | null;
   listPrice?: ModelPrice | null;
+  /** The role's own id for the same model, when the call was answered under another id. */
+  sameModelAs?: string | null;
 }): Promise<ModelPrice> {
   if (args.provider === 'anthropic' || args.provider === 'nvidia' || args.provider === 'together') {
     const row = await findActivePrice(`${args.provider}:${args.model}`);
     if (row) return row;
     if (args.listPrice) return args.listPrice;
+  }
+  if (args.provider === 'huggingface_inference' && args.sameModelAs && args.sameModelAs !== args.model) {
+    const row = (await findActivePrice(`huggingface_inference:${args.model}`)) ?? (await findActivePrice(args.model));
+    if (row) return row;
+    return getModelPrice(args.sameModelAs);
   }
   return getModelPrice(args.model);
 }

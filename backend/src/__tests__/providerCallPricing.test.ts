@@ -14,12 +14,10 @@ import * as poolMod from '../db/pool';
 import { emitCallTelemetry, runScope } from '../services/telemetry';
 import { _resetPricingCache, computeCostUsd, getCallPrice } from '../services/telemetry/pricingCatalog';
 import {
-  ANTHROPIC_DEFAULT_MODELS,
-  NVIDIA_DEFAULT_MODELS,
+  SAME_MODEL_PROVIDER_TABLE,
   anthropicListPrice,
   nvidiaListPrice,
   providerPriceKey,
-  TOGETHER_BACKUP_MODELS,
   togetherListPrice,
 } from '../services/openrouter/providerRoutes';
 import type { ModelCallResult } from '../services/openrouter/openrouterService';
@@ -28,6 +26,21 @@ vi.mock('../db/pool', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../db/pool')>()),
   adminQuery: vi.fn(),
 }));
+
+/**
+ * RJ-025 removed the size-class tables these ids came from. The ids stay here
+ * because the prices kept for them are still what a call to them is costed at.
+ */
+const CLAUDE_FAST = 'claude-haiku-5-5';
+const CLAUDE_STRONG = 'claude-sonnet-5-5';
+const NVIDIA_MODEL = 'moonshotai/kimi-k3';
+const TOGETHER_PRICED_MODELS = [
+  'deepseek-ai/DeepSeek-V4.1-Flash',
+  'zai-org/GLM-5.3-Flash',
+  'Qwen/Qwen3.8-Flash',
+  'openai/gpt-oss-120b',
+  'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+];
 
 const adminQuery = poolMod.adminQuery as unknown as ReturnType<typeof vi.fn>;
 
@@ -47,7 +60,7 @@ function pricingTable(rows: Record<string, [number, number]>): string[] {
 function result(overrides: Partial<ModelCallResult>): ModelCallResult {
   return {
     content: 'text',
-    model: ANTHROPIC_DEFAULT_MODELS.strong,
+    model: CLAUDE_STRONG,
     role: 'section_drafter',
     promptTokens: 1_000_000,
     completionTokens: 100_000,
@@ -76,9 +89,9 @@ beforeEach(() => {
 });
 
 describe('the published prices kept for the added providers', () => {
-  it('has a price for each default Claude model', () => {
-    expect(anthropicListPrice(ANTHROPIC_DEFAULT_MODELS.fast, 2_000)).toEqual({ inputPricePer1mUsd: 0.1, outputPricePer1mUsd: 0.5 });
-    expect(anthropicListPrice(ANTHROPIC_DEFAULT_MODELS.strong, 2_000)).toEqual({ inputPricePer1mUsd: 2, outputPricePer1mUsd: 10 });
+  it('has a price for the Claude models priced before RJ-025', () => {
+    expect(anthropicListPrice(CLAUDE_FAST, 2_000)).toEqual({ inputPricePer1mUsd: 0.1, outputPricePer1mUsd: 0.5 });
+    expect(anthropicListPrice(CLAUDE_STRONG, 2_000)).toEqual({ inputPricePer1mUsd: 2, outputPricePer1mUsd: 10 });
   });
 
   it('prices the low-cost Claude model higher for a prompt over 100,000 tokens, as Anthropic does', () => {
@@ -134,17 +147,17 @@ describe('the cost row written for a call', () => {
       insertedRow(
         result({
           listPrice: { inputPricePer1mUsd: 2, outputPricePer1mUsd: 10 },
-          routeUsed: { model: ANTHROPIC_DEFAULT_MODELS.strong, provider: 'anthropic', position: 'cross_provider' },
+          routeUsed: { model: CLAUDE_STRONG, provider: 'anthropic', position: 'cross_provider' },
           routesTried: [
             { model: 'deepseek/deepseek-v3.2', provider: 'openrouter', position: 'primary', round: 1, outcome: 'refused', classification: 'quota_exceeded', status: 402 },
-            { model: ANTHROPIC_DEFAULT_MODELS.strong, provider: 'anthropic', position: 'cross_provider', round: 1, outcome: 'answered' },
+            { model: CLAUDE_STRONG, provider: 'anthropic', position: 'cross_provider', round: 1, outcome: 'answered' },
           ],
         })
       )
     );
 
     // model, input price, output price, calculated cost, metadata
-    expect(params[7]).toBe(ANTHROPIC_DEFAULT_MODELS.strong);
+    expect(params[7]).toBe(CLAUDE_STRONG);
     expect(params[15]).toBe(2);
     expect(params[16]).toBe(10);
     expect(params[17]).toBeCloseTo(computeCostUsd(1_000_000, 100_000, { inputPricePer1mUsd: 2, outputPricePer1mUsd: 10 }), 6);
@@ -158,13 +171,13 @@ describe('the cost row written for a call', () => {
   });
 
   it('costs an NVIDIA call at nothing', async () => {
-    pricingTable({ [NVIDIA_DEFAULT_MODELS.strong]: [0.6, 2.5] });
+    pricingTable({ [NVIDIA_MODEL]: [0.6, 2.5] });
     const params = await runScope.run({ runId: null }, () =>
       insertedRow(
         result({
-          model: NVIDIA_DEFAULT_MODELS.strong,
+          model: NVIDIA_MODEL,
           listPrice: nvidiaListPrice(),
-          routeUsed: { model: NVIDIA_DEFAULT_MODELS.strong, provider: 'nvidia', position: 'cross_provider' },
+          routeUsed: { model: NVIDIA_MODEL, provider: 'nvidia', position: 'cross_provider' },
         })
       )
     );
@@ -191,8 +204,8 @@ describe('the cost row written for a call', () => {
 });
 
 describe('the published prices kept for Together (RJ-024)', () => {
-  it('has the price read from Together for every serverless backup model', () => {
-    expect(Object.fromEntries(TOGETHER_BACKUP_MODELS.map((model) => [model, togetherListPrice(model)]))).toEqual({
+  it('still has the price read from Together for each model priced in RJ-024', () => {
+    expect(Object.fromEntries(TOGETHER_PRICED_MODELS.map((model) => [model, togetherListPrice(model)]))).toEqual({
       'deepseek-ai/DeepSeek-V4.1-Flash': { inputPricePer1mUsd: 0.3, outputPricePer1mUsd: 1.2 },
       'zai-org/GLM-5.3-Flash': { inputPricePer1mUsd: 0.15, outputPricePer1mUsd: 0.5 },
       'Qwen/Qwen3.8-Flash': { inputPricePer1mUsd: 0.15, outputPricePer1mUsd: 0.47 },
@@ -232,5 +245,59 @@ describe('the published prices kept for Together (RJ-024)', () => {
   it('falls back to the row for the model id for a Together model this file has no price for', async () => {
     pricingTable({ 'some/other-model': [0.2, 0.3] });
     expect(await getCallPrice({ model: 'some/other-model', provider: 'together' })).toEqual({ inputPricePer1mUsd: 0.2, outputPricePer1mUsd: 0.3 });
+  });
+});
+
+describe('prices are keyed by provider and model (RJ-025)', () => {
+  it('builds the key as <provider>:<model id>', () => {
+    expect(providerPriceKey('anthropic', 'claude-opus-4-7')).toBe('anthropic:claude-opus-4-7');
+    expect(providerPriceKey('together', 'openai/gpt-oss-120b')).toBe('together:openai/gpt-oss-120b');
+    expect(providerPriceKey('nvidia', 'moonshotai/kimi-k3')).toBe('nvidia:moonshotai/kimi-k3');
+  });
+
+  it('has a published price for every Claude id the provider table sends to Anthropic', () => {
+    const anthropicIds = SAME_MODEL_PROVIDER_TABLE.map((entry) => entry.servedBy.anthropic).filter((id): id is string => Boolean(id));
+    expect(anthropicIds.sort()).toEqual(['claude-opus-4-7', 'claude-sonnet-4-5-20250929']);
+    expect(anthropicListPrice('claude-sonnet-4-5-20250929', 2_000)).toEqual({ inputPricePer1mUsd: 3, outputPricePer1mUsd: 15 });
+    expect(anthropicListPrice('claude-opus-4-7', 2_000)).toEqual({ inputPricePer1mUsd: 5, outputPricePer1mUsd: 25 });
+  });
+
+  it('costs the same Claude model at Anthropic prices on Anthropic and at the gateway row on OpenRouter', async () => {
+    pricingTable({ 'anthropic/claude-opus-4.7': [5.5, 27] });
+    const direct = await getCallPrice({ model: 'claude-opus-4-7', provider: 'anthropic', listPrice: anthropicListPrice('claude-opus-4-7', 10) });
+    const gateway = await getCallPrice({ model: 'anthropic/claude-opus-4.7', provider: 'openrouter' });
+    expect(direct).toEqual({ inputPricePer1mUsd: 5, outputPricePer1mUsd: 25 });
+    expect(gateway).toEqual({ inputPricePer1mUsd: 5.5, outputPricePer1mUsd: 27 });
+  });
+
+  it('costs a same-model Hugging Face call from the row keyed huggingface_inference:<hub id> when there is one', async () => {
+    pricingTable({ 'huggingface_inference:deepseek-ai/DeepSeek-V3.2': [0.26, 0.38], 'deepseek/deepseek-v3.2': [0.27, 0.4] });
+    const price = await getCallPrice({ model: 'deepseek-ai/DeepSeek-V3.2', provider: 'huggingface_inference', sameModelAs: 'deepseek/deepseek-v3.2' });
+    expect(price).toEqual({ inputPricePer1mUsd: 0.26, outputPricePer1mUsd: 0.38 });
+  });
+
+  it('otherwise costs it at the price of the role own id for the same model, so the call is not recorded as free', async () => {
+    const lookedUp = pricingTable({ 'deepseek/deepseek-v3.2': [0.27, 0.4] });
+    const price = await getCallPrice({ model: 'deepseek-ai/DeepSeek-V3.2', provider: 'huggingface_inference', sameModelAs: 'deepseek/deepseek-v3.2' });
+    expect(price).toEqual({ inputPricePer1mUsd: 0.27, outputPricePer1mUsd: 0.4 });
+    expect(lookedUp).toEqual(['huggingface_inference:deepseek-ai/DeepSeek-V3.2', 'deepseek-ai/DeepSeek-V3.2', 'deepseek/deepseek-v3.2']);
+  });
+
+  it('writes the cost row of a same-model Hugging Face call with that price and the provider that answered', async () => {
+    pricingTable({ 'deepseek/deepseek-v3.2': [0.27, 0.4] });
+    const params = await runScope.run({ runId: null }, () =>
+      insertedRow(
+        result({
+          model: 'deepseek-ai/DeepSeek-V3.2',
+          primaryModel: 'deepseek/deepseek-v3.2',
+          routeUsed: { model: 'deepseek-ai/DeepSeek-V3.2', provider: 'huggingface_inference', position: 'cross_provider' },
+        })
+      )
+    );
+
+    expect(params[7]).toBe('deepseek-ai/DeepSeek-V3.2');
+    expect(params[15]).toBe(0.27);
+    expect(params[16]).toBe(0.4);
+    expect(JSON.parse(String(params[19])).provider).toBe('huggingface_inference');
   });
 });
