@@ -7,14 +7,15 @@ import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
 import { MODE_OVERLAYS, type AgentRole } from '../../constants/modeOverlays';
 import { mergePresetWithRuntimeOverride, resolveReasoningModels } from '../../config/researchEnsemblePresets';
+import { RESEARCH_ENGINE_VERSION } from '../../config/researchEngine';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
   getIntentOutputTemplate,
 } from '../formatting/templates/intentOutputTemplates';
 import {
   CHALLENGE_PASS_SYSTEM_PREFIX,
-  crossProviderBackupModelsForRole,
   isHfRepoModel,
+  RESEARCH_OBJECTIVES,
   type ModelCallPurpose,
   type ResearchObjective,
 } from '../reasoning/reasoningModelPolicy';
@@ -23,14 +24,14 @@ import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openr
 import { emitCallTelemetry } from '../telemetry';
 import {
   anthropicListPrice,
-  anthropicModelsByRole,
   nvidiaListPrice,
-  nvidiaModelsByRole,
+  PROVIDER_SLOT,
   ROUTE_CONFIGURATION_ADVICE,
   routeConfigurationReason,
+  sameModelRoutesOnOtherProviders,
   togetherListPrice,
-  togetherModelsForRole,
   type ListPrice,
+  type ModelProviderName,
   type ProviderSlot,
   type RouteConfigurationReason,
 } from './providerRoutes';
@@ -100,20 +101,31 @@ export interface ModelCallResult {
   listPrice?: ListPrice;
 }
 
-export type ModelRouteProvider = 'openrouter' | 'huggingface_inference' | 'together' | 'anthropic' | 'nvidia';
+export type ModelRouteProvider = ModelProviderName;
 
 /**
- * Where a model sits in a role's order: its own model, its own backup, a
- * backup on another provider, or (`preferred`) a provider that
- * `MODEL_PROVIDER_ORDER` places ahead of the role's own model.
+ * Where a route sits in a role's order (RJ-025). Every route of a call is the
+ * same model:
+ *
+ *   - `primary`: the model the role chose, on the provider its id belongs to.
+ *   - `cross_provider`: that same model on another provider, tried after the
+ *     role's own provider refused.
+ *   - `preferred`: that same model on a provider `MODEL_PROVIDER_ORDER` places
+ *     ahead of the role's own.
+ *   - `backup`: a different model the role named as its backup. No call takes
+ *     this route any more; the value stays because saved runs carry it.
  */
 export type ModelRoutePosition = 'primary' | 'backup' | 'cross_provider' | 'preferred';
 
-/** One route a call may take. `via` is set for a provider that is called directly with its own model ids. */
+/**
+ * One route a call may take. `via` names the provider when the route is the
+ * role's model on another provider, with the id the table gives it there. The
+ * role's own model has no `via`: its id says which provider it belongs to.
+ */
 export interface ModelRoute {
   model: string;
   position: ModelRoutePosition;
-  via?: 'anthropic' | 'nvidia' | 'together';
+  via?: ModelProviderName;
 }
 
 export interface ModelRouteUsed {
@@ -430,6 +442,41 @@ function resolveModelsForCall(options: ModelCallOptions): { primary: string; fal
     primary: primaryForRole(options.role, options.runtimeOverrides?.primary),
     fallback: fallbackForRole(options.role, options.runtimeOverrides?.fallback),
   };
+}
+
+/** One model a role uses, and where it is used. */
+export interface RoleChosenModel {
+  model: string;
+  /** `research`: the research engine's own choice for every kind of research. Otherwise the kinds it applies to, or `server setting`. */
+  usedFor: string;
+}
+
+/**
+ * The model each role chooses, with no per-run choice applied (RJ-025). The
+ * first entry is what the research engine uses for general research. Any
+ * further entry is a different model the same role uses for another kind of
+ * research, or the server's own setting, which a call made outside a research
+ * run uses.
+ */
+export function chosenModelsForRole(role: ModelRole): RoleChosenModel[] {
+  const base: ModelCallOptions = { role, messages: [], engineVersion: RESEARCH_ENGINE_VERSION };
+  const general = resolveModelsForCall(base).primary;
+  const chosen: RoleChosenModel[] = [{ model: general, usedFor: 'research' }];
+  const add = (model: string, usedFor: string): void => {
+    const existing = chosen.find((entry) => entry.model === model);
+    if (!existing) chosen.push({ model, usedFor });
+    else if (existing.usedFor !== 'research') existing.usedFor = `${existing.usedFor}, ${usedFor}`;
+  };
+  for (const objective of RESEARCH_OBJECTIVES) {
+    add(resolveModelsForCall({ ...base, researchObjective: objective }).primary, objective);
+  }
+  add(primaryForRole(role), 'server setting');
+  return chosen;
+}
+
+/** The provider a model id belongs to when a role names it as its own model. */
+export function providerForChosenModel(model: string): ModelRouteProvider {
+  return nativeProviderForModel(model);
 }
 
 async function callHfChat(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
@@ -863,13 +910,20 @@ async function callModel(
   options: ModelCallOptions
 ): Promise<{ result: ModelCallResult; backend: ModelBackend }> {
   const model = route.model;
-  if (route.via === 'anthropic') return { result: await callAnthropicChat(model, options), backend: 'Anthropic' };
-  if (route.via === 'nvidia') return { result: await callNvidiaChat(model, options), backend: 'NVIDIA' };
-  if (route.via === 'together') return { result: await callTogetherChat(model, options), backend: 'Together' };
-  // A hub id goes to Hugging Face Inference only. It is not sent to Together
-  // under the same name: Together serves its own ids, as its own routes (RJ-024).
-  if (isHfRepoModel(model)) return { result: await callHfChat(model, options), backend: 'HF' };
-  return { result: await callOpenRouter(model, options), backend: 'OpenRouter' };
+  // The provider is the one the route names. Only the role's own model, which
+  // names none, is placed by its id.
+  switch (nativeProviderForRoute(route)) {
+    case 'anthropic':
+      return { result: await callAnthropicChat(model, options), backend: 'Anthropic' };
+    case 'nvidia':
+      return { result: await callNvidiaChat(model, options), backend: 'NVIDIA' };
+    case 'together':
+      return { result: await callTogetherChat(model, options), backend: 'Together' };
+    case 'huggingface_inference':
+      return { result: await callHfChat(model, options), backend: 'HF' };
+    case 'openrouter':
+      return { result: await callOpenRouter(model, options), backend: 'OpenRouter' };
+  }
 }
 
 /**
@@ -920,21 +974,23 @@ function nativeProviderForModel(model: string): ModelRouteProvider {
 }
 
 /** The provider a route's first request goes to. */
-function nativeProviderForRoute(route: ModelRoute): ModelRouteProvider {
+function nativeProviderForRoute(route: Pick<ModelRoute, 'model' | 'via'>): ModelRouteProvider {
   return route.via ?? nativeProviderForModel(route.model);
 }
 
 function endpointForRoute(route: ModelRoute): string {
-  if (route.via === 'anthropic') return anthropicMessagesEndpoint();
-  if (route.via === 'nvidia') return nvidiaChatEndpoint();
-  if (route.via === 'together') return togetherChatEndpoint();
-  return isHfRepoModel(route.model) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`;
-}
-
-/** The place a route has in `MODEL_PROVIDER_ORDER`. Together's models and the hub models share the `together` place. */
-function slotForRoute(route: Pick<ModelRoute, 'model' | 'via'>): ProviderSlot {
-  if (route.via) return route.via;
-  return isHfRepoModel(route.model) ? 'together' : 'openrouter';
+  switch (nativeProviderForRoute(route)) {
+    case 'anthropic':
+      return anthropicMessagesEndpoint();
+    case 'nvidia':
+      return nvidiaChatEndpoint();
+    case 'together':
+      return togetherChatEndpoint();
+    case 'huggingface_inference':
+      return 'https://api-inference.huggingface.co';
+    case 'openrouter':
+      return `${config.openrouter.baseUrl}/chat/completions`;
+  }
 }
 
 /** One shape for whatever a provider call threw, so every route's refusal is recorded the same way. */
@@ -963,29 +1019,33 @@ function normalizeRouteError(
 }
 
 /**
- * The routes a call may take, in order.
+ * The routes a call may take, in order (RJ-025).
  *
- * With the default provider order this is: the role's own model, the role's
- * own backup, then the other configured providers in the order
- * `MODEL_PROVIDER_ORDER` gives them. A provider the role's own models did not
- * use comes before more models on the provider that has just refused them.
- * The first two are exactly what the role had before; nothing here drops them.
+ * Every route is the same model: the one the role chose. The first route is
+ * that model on the provider its id belongs to. The others are that exact
+ * model on each other provider that has a key on this server and that the
+ * table in `providerRoutes.ts` says serves it, in the order
+ * `MODEL_PROVIDER_ORDER` gives the providers.
  *
- * When the server sets `MODEL_PROVIDER_ORDER` and it places a configured
- * provider ahead of the one the role's own model is on, that provider's model
- * for the role is tried first (`preferred`), and the role's own model and
- * backup follow it. With the setting left unset, the role's own model is
- * always first.
+ * A different model is never a route. That covers the backup a role names in
+ * a preset, in the server's settings or for one run: it is not tried by
+ * itself any more. A role whose model only one provider serves has one route.
+ * Anthropic is a route only for a Claude model.
+ *
+ * When the server sets `MODEL_PROVIDER_ORDER` and it places a provider that
+ * serves the model ahead of the one the role's own id is on, that provider is
+ * tried first (`preferred`) and the role's own id follows it. With the setting
+ * left unset, the role's own id is always first.
  */
 export function modelRoutesForCall(args: {
   role: ModelRole;
+  /** The model the role chose for this call. */
   primary: string;
-  fallback: string | undefined;
   /** False when the caller supplied its own OpenRouter key and the server has none. */
   openrouterConfigured: boolean;
-  /** True when `HF_TOKEN` is set: the hub models on Hugging Face Inference. */
+  /** True when `HF_TOKEN` is set: Hugging Face Inference. */
   hubConfigured: boolean;
-  /** True when `TOGETHER_API_KEY` is set: Together's own serverless models. */
+  /** True when `TOGETHER_API_KEY` is set. */
   togetherConfigured?: boolean;
   /** True when `ANTHROPIC_API_KEY` is set and the call may use the server's account. */
   anthropicConfigured?: boolean;
@@ -993,54 +1053,39 @@ export function modelRoutesForCall(args: {
   nvidiaConfigured?: boolean;
   /** Defaults to the server's `MODEL_PROVIDER_ORDER`. */
   providerOrder?: readonly ProviderSlot[];
-  /** Whether the order was set on the server, and so may place a provider ahead of the role's own model. */
+  /** Whether the order was set on the server, and so may place a provider ahead of the role's own id. */
   providerOrderSet?: boolean;
 }): ModelRoute[] {
-  const own: ModelRoute[] = [{ model: args.primary, position: 'primary' }];
-  if (args.fallback && args.fallback !== args.primary) own.push({ model: args.fallback, position: 'backup' });
+  const own: ModelRoute = { model: args.primary, position: 'primary' };
+  const ownProvider = nativeProviderForModel(args.primary);
   const order = args.providerOrder ?? config.modelProviderOrder;
-  const rank = (slot: ProviderSlot): number => {
-    const index = order.indexOf(slot);
+  const rank = (provider: ModelProviderName): number => {
+    const index = order.indexOf(PROVIDER_SLOT[provider]);
     return index === -1 ? order.length : index;
   };
-  const seen = new Set(own.map((route) => route.model));
-  const gatewayAndHub = crossProviderBackupModelsForRole(args.role, {
-    openrouter: args.openrouterConfigured,
-    hub: args.hubConfigured,
-  }).filter((model) => !seen.has(model));
+  // Sorting is stable, so two providers that share a place keep the table's
+  // order: Together, then Hugging Face Inference.
+  const others = sameModelRoutesOnOtherProviders(
+    { provider: ownProvider, model: args.primary },
+    {
+      openrouter: args.openrouterConfigured,
+      huggingface_inference: args.hubConfigured,
+      together: args.togetherConfigured === true,
+      anthropic: args.anthropicConfigured === true,
+      nvidia: args.nvidiaConfigured === true,
+    }
+  ).sort((a, b) => rank(a.provider) - rank(b.provider));
 
-  const others: Record<ProviderSlot, Array<Pick<ModelRoute, 'model' | 'via'>>> = {
-    openrouter: gatewayAndHub.filter((model) => !isHfRepoModel(model)).map((model) => ({ model })),
-    // Two providers in one place: Together's serverless models, then the hub
-    // models on Hugging Face Inference. Each is its own route.
-    together: [
-      ...(args.togetherConfigured
-        ? togetherModelsForRole(args.role).map((model): Pick<ModelRoute, 'model' | 'via'> => ({ model, via: 'together' }))
-        : []),
-      ...gatewayAndHub.filter((model) => isHfRepoModel(model)).map((model) => ({ model })),
-    ],
-    anthropic: args.anthropicConfigured
-      ? [{ model: anthropicModelsByRole(config.anthropic.models)[args.role], via: 'anthropic' }]
-      : [],
-    nvidia: args.nvidiaConfigured ? [{ model: nvidiaModelsByRole(config.nvidia.models)[args.role], via: 'nvidia' }] : [],
-  };
-
-  const ownSlots = new Set(own.map((route) => slotForRoute(route)));
-  // The order is measured against the provider the role's own model is on. A
-  // backup on another provider does not hold that provider's place.
-  const primarySlot = slotForRoute(own[0]);
-  const ownRank = rank(primarySlot);
-  const slotsInOrder = [...order].sort((a, b) => rank(a) - rank(b));
   const orderSet = args.providerOrderSet ?? config.modelProviderOrderSet;
-  const ahead = orderSet ? slotsInOrder.filter((slot) => slot !== primarySlot && rank(slot) < ownRank) : [];
-  // A provider the role has not used yet comes before one that already refused it.
-  const fresh = slotsInOrder.filter((slot) => !ownSlots.has(slot) && !ahead.includes(slot));
-  const rest = slotsInOrder.filter((slot) => ownSlots.has(slot) && !ahead.includes(slot));
-
+  const isAhead = (provider: ModelProviderName): boolean => orderSet && rank(provider) < rank(ownProvider);
   const routes: ModelRoute[] = [];
-  for (const slot of ahead) for (const route of others[slot]) routes.push({ ...route, position: 'preferred' });
-  routes.push(...own);
-  for (const slot of [...fresh, ...rest]) for (const route of others[slot]) routes.push({ ...route, position: 'cross_provider' });
+  for (const route of others) {
+    if (isAhead(route.provider)) routes.push({ model: route.model, via: route.provider, position: 'preferred' });
+  }
+  routes.push(own);
+  for (const route of others) {
+    if (!isAhead(route.provider)) routes.push({ model: route.model, via: route.provider, position: 'cross_provider' });
+  }
   return routes;
 }
 
@@ -1049,12 +1094,13 @@ const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(
 /**
  * Call a model by role.
  *
- * A role does not depend on one provider. The call goes to the role's own
- * model, then its backup, and — when those were refused for a provider-side
- * reason such as no credit, a rate limit, an outage or a rejected key — to
- * approved models on the other configured providers. It fails only when every
- * route has refused, after waiting and going over the routes again when the
- * refusal was about credit or rate. Which route answered is on the result.
+ * The call goes to the model the role chose. When the provider refuses for a
+ * provider-side reason such as no credit, a rate limit, an outage or a
+ * rejected key, the SAME model is asked on each other configured provider
+ * that serves it (RJ-025). No other model is ever asked in its place. The
+ * call fails when every route for that model has refused, after waiting and
+ * going over the routes again when the refusal was about credit or rate.
+ * Which route answered is on the result.
  */
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
   const prepared: ModelCallOptions = {
@@ -1064,13 +1110,13 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     // policy block and the challenge prefix from adjudicative and challenge calls.
     baselineLayer: resolveBaselineLayer(options),
   };
-  const { primary: primaryModel, fallback: fallbackModel } = resolveModelsForCall(prepared);
+  // The backup a role names is a different model, so it is not a route (RJ-025).
+  const { primary: primaryModel } = resolveModelsForCall(prepared);
   const startedAtMs = Date.now();
   const telemetryInvocationId = randomUUID();
   const routes = modelRoutesForCall({
     role: options.role,
     primary: primaryModel,
-    fallback: fallbackModel,
     openrouterConfigured: Boolean((options.byokApiKeyOverride ?? config.openrouter.apiKey)?.trim()),
     // A caller who brought their own OpenRouter key chose where their request
     // goes and who pays. Their request is never moved onto the platform's
@@ -1081,32 +1127,27 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     anthropicConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.anthropic.apiKey?.trim()),
     nvidiaConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.nvidia.apiKey?.trim()),
   });
-  const hasBackup = routes.some((route) => route.position === 'backup');
+  /** Whether the role's model has a route on another provider. */
+  const hasOtherRoute = routes.some((route) => route.position !== 'primary');
   const attempts: ModelRouteAttempt[] = [];
-  /** The refusal of the role's own models: what a failure of this call is reported as. */
+  /** The refusal of the role's own route: what a failure of this call is reported as. */
   let ownModelsError: NormalizedModelError | null = null;
   let firstClassification: ModelErrorClassification | undefined;
   const totalRounds = 1 + modelRouteRetry.delaysMs.length;
 
   for (let round = 1; round <= totalRounds; round += 1) {
-    /**
-     * Whether any refusal of the role's own models on this pass was about the
-     * provider. One such refusal is enough: a backup the provider no longer
-     * carries does not cancel the outage or the empty account that came
-     * before it.
-     */
+    /** Whether the role's own route was refused on this pass for a reason about the provider. */
     let ownProviderSideRefusal = false;
     for (const route of routes) {
-      // Another provider is tried only when the role's own models were refused
+      // Another provider is tried only when the role's own route was refused
       // for a reason about the provider. A request the provider called
       // malformed would be malformed there too. Once other providers are being
-      // tried, each one is tried: a host that does not carry one model says
-      // nothing about the next host or the next model.
+      // tried, each one is tried: one host being down says nothing about the next.
       if (route.position === 'cross_provider' && !ownProviderSideRefusal) {
         break;
       }
-      if (route.position === 'backup' || route.position === 'cross_provider') {
-        logger.info(`Falling back to ${route.model} for role [${options.role}]`, {
+      if (route.position === 'cross_provider') {
+        logger.info(`Asking another provider for the same model (${route.model}) for role [${options.role}]`, {
           position: route.position,
           provider: nativeProviderForRoute(route),
           round,
@@ -1118,7 +1159,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
         attempts.push({ model: route.model, provider, position: route.position, round, outcome: 'answered' });
         // A provider the server's order puts first is not a fallback: nothing was refused to reach it.
-        const usedFallback = route.position === 'backup' || route.position === 'cross_provider';
+        const usedFallback = route.position === 'cross_provider';
         const augmented: ModelCallResult = {
           ...result,
           usedFallback,
@@ -1143,7 +1184,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         return augmented;
       } catch (err) {
         const normalized = normalizeRouteError(err, route, options.role, route.position !== 'primary');
-        const ownRoute = route.position === 'primary' || route.position === 'backup';
+        const ownRoute = route.position === 'primary';
         if (ownRoute && PROVIDER_SIDE_CLASSIFICATIONS.has(normalized.classification)) {
           ownProviderSideRefusal = true;
         }
@@ -1171,7 +1212,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
           model: route.model,
           status: normalized.status,
           classification: normalized.classification,
-          fallbackAttempted: route.position === 'primary' ? hasBackup : true,
+          fallbackAttempted: route.position === 'primary' ? hasOtherRoute : true,
           providerBody: normalized.providerMessage,
           round,
         });
@@ -1197,10 +1238,12 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     new NormalizedModelError({
       classification: 'unknown',
       model: primaryModel,
-      fallbackTried: hasBackup,
+      fallbackTried: hasOtherRoute,
       role: options.role,
     });
   failure.routesTried = attempts;
+  // True when the same model was also asked on another provider.
+  failure.fallbackTried = attempts.some((attempt) => attempt.position !== 'primary');
   throw failure;
 }
 
@@ -1257,7 +1300,7 @@ export function classifyModelError(err: AxiosError): ModelErrorClassification {
   if (status >= 500) return 'provider_unavailable';
   if (status === 401 || status === 403) return 'auth_error';
 
-  // OpenRouter returns 404 for two distinct failure modes:
+  // OpenRouter returns 404 for three distinct failure modes:
   //   (a) "No allowed providers are available for the selected model" —
   //       a provider-availability issue, not a malformed request. The
   //       account's data-collection / privacy filter excludes every
@@ -1266,9 +1309,14 @@ export function classifyModelError(err: AxiosError): ModelErrorClassification {
   //       attempted before the run aborts.
   //   (b) Generic 404 (typo'd slug, retired model) — a bad_request;
   //       no retry would succeed, terminal immediately.
+  //   (c) See below.
   if (status === 404) {
     const msg = extractProviderMessage(err);
     if (/no allowed providers/i.test(msg)) return 'provider_unavailable';
+    // (c) "No endpoints found for <model>": the gateway knows the model but
+    //     has no host for it at the moment. That is about the gateway, not the
+    //     request, so the same model is asked on another provider (RJ-025).
+    if (/no endpoints found/i.test(msg)) return 'provider_unavailable';
     return 'bad_request';
   }
   if (status === 400) {
