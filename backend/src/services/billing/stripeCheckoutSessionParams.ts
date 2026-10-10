@@ -3,6 +3,7 @@ import {
   stripeCheckoutAllowPromotionCodes,
   stripeCheckoutSubscriptionSessionDefaults,
 } from './stripeClient';
+import { RESEARCHONE_APP_MARKER } from './stripeEventShape';
 
 /**
  * Payment-mode Checkout defaults: promotion codes.
@@ -40,6 +41,7 @@ export function buildWalletTopupCheckoutSessionCreateParams(args: {
     cancel_url: config.stripe.cancelUrl,
     metadata: {
       user_id: args.userId,
+      app: RESEARCHONE_APP_MARKER,
       price_id: args.priceId,
       topup_amount_cents: String(args.topupAmountCents),
       checkout_kind: 'topup',
@@ -63,6 +65,7 @@ export function buildPlanSubscriptionCheckoutSessionCreateParams(args: {
     cancel_url: config.stripe.cancelUrl,
     metadata: {
       user_id: args.userId,
+      app: RESEARCHONE_APP_MARKER,
       tier: args.tier,
       price_id: args.priceId,
       checkout_kind: 'subscription',
@@ -70,6 +73,7 @@ export function buildPlanSubscriptionCheckoutSessionCreateParams(args: {
     subscription_data: {
       metadata: {
         user_id: args.userId,
+        app: RESEARCHONE_APP_MARKER,
         tier: args.tier,
         price_id: args.priceId,
       },
@@ -94,6 +98,7 @@ export function buildMonitorTokenCheckoutSessionCreateParams(args: {
     cancel_url: config.stripe.cancelUrl,
     metadata: {
       user_id: args.userId,
+      app: RESEARCHONE_APP_MARKER,
       price_id: args.priceId,
       purchase_type: 'monitor_tokens',
       package_id: args.packageId,
@@ -120,12 +125,14 @@ export function buildMonitorSubscriptionCheckoutSessionCreateParams(args: {
     cancel_url: config.stripe.cancelUrl,
     metadata: {
       user_id: args.userId,
+      app: RESEARCHONE_APP_MARKER,
       report_id: args.reportId,
       monitor_kind: args.monitorKind,
     },
     subscription_data: {
       metadata: {
         user_id: args.userId,
+        app: RESEARCHONE_APP_MARKER,
         report_id: args.reportId,
         monitor_kind: args.monitorKind,
       },

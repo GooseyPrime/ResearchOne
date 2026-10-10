@@ -33,8 +33,47 @@ import {
 } from '../../services/billing/syncStripeSubscription';
 import { recordBillingEvent } from '../../services/billing/billingEventsService';
 import { markSubscriptionCanceled } from '../../services/billing/subscriptionService';
+import {
+  readInvoiceSubscriptionId,
+  stripeEventIsForeign,
+  subscriptionIsResearchOne,
+  type StripeInvoiceLike,
+} from '../../services/billing/stripeEventShape';
 
 const router = Router();
+
+/**
+ * True when the event is about another product's sale. A subscription
+ * checkout that carries none of our metadata is checked against its
+ * subscription before it is set aside; if Stripe cannot be asked, the event
+ * is treated as not ours and acknowledged, never failed.
+ */
+async function isForeignStripeEvent(
+  eventId: string,
+  eventType: string,
+  object: Record<string, unknown>
+): Promise<boolean> {
+  if (!stripeEventIsForeign(eventType, object)) return false;
+  if (!eventType.startsWith('checkout.session.')) return true;
+
+  const session = object as { mode?: string; subscription?: unknown };
+  if (session.mode !== 'subscription' || typeof session.subscription !== 'string' || !session.subscription) {
+    return true;
+  }
+  try {
+    const subscription = await getStripeClient().subscriptions.retrieve(session.subscription);
+    return !subscriptionIsResearchOne(
+      subscription as unknown as Parameters<typeof subscriptionIsResearchOne>[0]
+    );
+  } catch (err) {
+    logger.warn('stripe_webhook_ownership_lookup_failed', {
+      eventId,
+      eventType,
+      error: err instanceof Error ? err.message : 'Unknown',
+    });
+    return true;
+  }
+}
 
 type StripeEventData = Record<string, unknown>;
 
@@ -114,17 +153,7 @@ const handleCheckoutSessionCompleted: WebhookEventHandler<StripeEventData> = asy
   }, eventId);
 };
 
-interface SubscriptionData {
-  id: string;
-  customer: string | { id: string };
-  status: string;
-  current_period_end: number;
-  cancel_at_period_end: boolean;
-  metadata?: { user_id?: string; userId?: string; tier?: string; report_id?: string; monitor_kind?: string };
-  items?: {
-    data?: Array<{ id?: string; price?: { id?: string | null; lookup_key?: string | null } }>;
-  };
-}
+type SubscriptionData = StripeSubscriptionLike;
 
 const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const subscription = data as unknown as SubscriptionData;
@@ -203,20 +232,15 @@ const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (d
   }
 };
 
-interface InvoiceData {
-  id?: string;
-  subscription?: string | { id?: string } | null;
-  amount_paid?: number;
-  amount_due?: number;
-  currency?: string;
-  created?: number;
-}
+type InvoiceData = StripeInvoiceLike;
 
 const handleInvoicePaymentSucceeded: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const invoice = data as unknown as InvoiceData;
-  const subscriptionId =
-    typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
-  if (!subscriptionId) return;
+  const subscriptionId = readInvoiceSubscriptionId(invoice);
+  if (!subscriptionId) {
+    logger.warn('stripe_invoice_subscription_missing', { eventId, invoiceId: invoice.id ?? null });
+    return;
+  }
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
@@ -247,8 +271,7 @@ const handleInvoicePaymentSucceeded: WebhookEventHandler<StripeEventData> = asyn
 
 const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const invoice = data as unknown as InvoiceData;
-  const subscriptionId =
-    typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+  const subscriptionId = readInvoiceSubscriptionId(invoice);
 
   await query(
     `UPDATE stripe_webhook_events
@@ -397,6 +420,14 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       const message = err instanceof Error ? err.message : 'Unknown verification error';
       logger.warn('stripe_webhook_signature_invalid', { error: message });
       res.status(400).json({ error: 'Invalid signature' });
+      return;
+    }
+
+    // The Stripe account is shared: other products' sales reach this endpoint
+    // too. They are acknowledged and left alone, before anything is stored.
+    if (await isForeignStripeEvent(event.id, event.type, event.data.object)) {
+      logger.debug('stripe_webhook_foreign_event_ignored', { eventId: event.id, eventType: event.type });
+      res.status(200).json({ status: 'ignored' });
       return;
     }
 
