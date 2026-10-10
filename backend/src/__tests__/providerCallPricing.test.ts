@@ -19,6 +19,8 @@ import {
   anthropicListPrice,
   nvidiaListPrice,
   providerPriceKey,
+  TOGETHER_BACKUP_MODELS,
+  togetherListPrice,
 } from '../services/openrouter/providerRoutes';
 import type { ModelCallResult } from '../services/openrouter/openrouterService';
 
@@ -116,9 +118,9 @@ describe('the price a call is costed at', () => {
     expect(gateway).toEqual({ inputPricePer1mUsd: 0.05, outputPricePer1mUsd: 0.2 });
   });
 
-  it('is unchanged for OpenRouter, Hugging Face and Together calls: the row for the model id', async () => {
+  it('is unchanged for OpenRouter and Hugging Face calls: the row for the model id', async () => {
     const lookedUp = pricingTable({ 'deepseek/deepseek-v3.2': [0.27, 0.4] });
-    for (const provider of ['openrouter', 'huggingface_inference', 'together', undefined]) {
+    for (const provider of ['openrouter', 'huggingface_inference', undefined]) {
       expect(await getCallPrice({ model: 'deepseek/deepseek-v3.2', provider })).toEqual({ inputPricePer1mUsd: 0.27, outputPricePer1mUsd: 0.4 });
     }
     expect(new Set(lookedUp)).toEqual(new Set(['deepseek/deepseek-v3.2']));
@@ -185,5 +187,50 @@ describe('the cost row written for a call', () => {
 
     expect(params[15]).toBe(0.27);
     expect(params[17]).toBeCloseTo(0.27 + 0.04, 6);
+  });
+});
+
+describe('the published prices kept for Together (RJ-024)', () => {
+  it('has the price read from Together for every serverless backup model', () => {
+    expect(Object.fromEntries(TOGETHER_BACKUP_MODELS.map((model) => [model, togetherListPrice(model)]))).toEqual({
+      'deepseek-ai/DeepSeek-V4.1-Flash': { inputPricePer1mUsd: 0.3, outputPricePer1mUsd: 1.2 },
+      'zai-org/GLM-5.3-Flash': { inputPricePer1mUsd: 0.15, outputPricePer1mUsd: 0.5 },
+      'Qwen/Qwen3.8-Flash': { inputPricePer1mUsd: 0.15, outputPricePer1mUsd: 0.47 },
+      'openai/gpt-oss-120b': { inputPricePer1mUsd: 0.15, outputPricePer1mUsd: 0.6 },
+      'meta-llama/Llama-3.3-70B-Instruct-Turbo': { inputPricePer1mUsd: 1.04, outputPricePer1mUsd: 1.04 },
+    });
+  });
+
+  it('has no made-up price for a model it does not know', () => {
+    expect(togetherListPrice('deepseek-ai/DeepSeek-V3.1')).toBeNull();
+  });
+
+  it('costs a Together call at the published price when the pricing table has no row for it', async () => {
+    const lookedUp = pricingTable({});
+    const model = 'openai/gpt-oss-120b';
+    const price = await getCallPrice({ model, provider: 'together', listPrice: togetherListPrice(model) });
+    expect(price).toEqual({ inputPricePer1mUsd: 0.15, outputPricePer1mUsd: 0.6 });
+    expect(lookedUp).toEqual([providerPriceKey('together', model)]);
+  });
+
+  it('does not cost a Together call at another provider price for a model of the same name', async () => {
+    pricingTable({ 'openai/gpt-oss-120b': [9, 9] });
+    const model = 'openai/gpt-oss-120b';
+    const together = await getCallPrice({ model, provider: 'together', listPrice: togetherListPrice(model) });
+    expect(together).toEqual({ inputPricePer1mUsd: 0.15, outputPricePer1mUsd: 0.6 });
+  });
+
+  it('uses the pricing table row keyed together:<model> when an operator has added one', async () => {
+    pricingTable({ 'together:zai-org/GLM-5.3-Flash': [0.1, 0.4] });
+    const model = 'zai-org/GLM-5.3-Flash';
+    expect(await getCallPrice({ model, provider: 'together', listPrice: togetherListPrice(model) })).toEqual({
+      inputPricePer1mUsd: 0.1,
+      outputPricePer1mUsd: 0.4,
+    });
+  });
+
+  it('falls back to the row for the model id for a Together model this file has no price for', async () => {
+    pricingTable({ 'some/other-model': [0.2, 0.3] });
+    expect(await getCallPrice({ model: 'some/other-model', provider: 'together' })).toEqual({ inputPricePer1mUsd: 0.2, outputPricePer1mUsd: 0.3 });
   });
 });

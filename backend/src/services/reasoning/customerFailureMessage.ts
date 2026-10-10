@@ -81,6 +81,7 @@ const AI_SERVICE_CLASSIFICATIONS: ReadonlySet<string> = new Set([
   'network_error',
   'auth_error',
   'endpoint_not_found',
+  'route_config_error',
 ]);
 
 const WRITING_STAGES: ReadonlySet<string> = new Set(['synthesis', 'synthesizer', 'plain_language']);

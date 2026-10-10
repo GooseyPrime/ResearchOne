@@ -1,7 +1,7 @@
 const HINT_HF_INFERENCE_LOGS_EMPTY =
   'The request may have failed before model execution; Hugging Face model inference logs can be empty in this case.';
-const HINT_TOGETHER_AFTER_HF =
-  'The failing request was sent to Together.ai after Hugging Face failed for this model id. Verify TOGETHER_API_KEY, Together service status, and that the model id is available on Together.';
+const HINT_TOGETHER =
+  'The failing request was sent to Together.ai. Verify TOGETHER_API_KEY, Together service status, and that the model id is one Together serves without a dedicated endpoint.';
 const HINT_OPENROUTER_NO_ALLOWED_PROVIDERS =
   'OpenRouter returned 404 "No allowed providers are available for the selected model." This is an account-side configuration mismatch, not a transient outage: every upstream provider for this model is excluded by your account\'s privacy / data-collection / model-policy filter. Action: (1) on https://openrouter.ai/settings/preferences, ensure "Allow training on prompts" is permitted (or set OPENROUTER_DATA_COLLECTION=allow on the server); (2) or pick a different model in the per-run override panel — open the V2 page, click "Show model ensemble", and switch the failing role to a model with multiple upstream providers.';
 const HINT_OPENROUTER_404 =
@@ -23,7 +23,7 @@ export function buildModelFailureOrchestratorHints(meta: Record<string, unknown>
     hints.push(`Provider fallback attempted via ${fb} (result=${fbResult}).`);
   }
   if (upstream === 'together') {
-    hints.push(HINT_TOGETHER_AFTER_HF);
+    hints.push(HINT_TOGETHER);
   }
 
   // OpenRouter "No allowed providers are available" — account-side

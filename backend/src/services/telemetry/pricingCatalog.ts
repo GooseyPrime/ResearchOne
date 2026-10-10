@@ -139,10 +139,10 @@ async function findActivePrice(key: string): Promise<ModelPrice | null> {
 /**
  * The price of one model call, by the provider that answered it (RJ-021).
  *
- * OpenRouter, Hugging Face and Together calls are priced as before, from the
+ * OpenRouter and Hugging Face calls are priced as before, from the
  * `model_pricing` row for the model id.
  *
- * Anthropic and NVIDIA calls are priced, in order, from:
+ * Anthropic, NVIDIA and Together (RJ-024) calls are priced, in order, from:
  *   1. the `model_pricing` row keyed `<provider>:<model id>`, when an operator
  *      has added one (a price change then needs no deploy);
  *   2. the provider's published price carried on the call result;
@@ -156,7 +156,7 @@ export async function getCallPrice(args: {
   provider?: string | null;
   listPrice?: ModelPrice | null;
 }): Promise<ModelPrice> {
-  if (args.provider === 'anthropic' || args.provider === 'nvidia') {
+  if (args.provider === 'anthropic' || args.provider === 'nvidia' || args.provider === 'together') {
     const row = await findActivePrice(`${args.provider}:${args.model}`);
     if (row) return row;
     if (args.listPrice) return args.listPrice;

@@ -26,8 +26,13 @@ import {
   anthropicModelsByRole,
   nvidiaListPrice,
   nvidiaModelsByRole,
+  ROUTE_CONFIGURATION_ADVICE,
+  routeConfigurationReason,
+  togetherListPrice,
+  togetherModelsForRole,
   type ListPrice,
   type ProviderSlot,
+  type RouteConfigurationReason,
 } from './providerRoutes';
 
 export { REASONING_FIRST_PREAMBLE, withPreamble, withStandardPreamble };
@@ -89,7 +94,7 @@ export interface ModelCallResult {
   routesTried?: ModelRouteAttempt[];
   /**
    * The provider's published price for this call, when the provider is one
-   * whose prices are kept in code (Anthropic, NVIDIA). Cost tracking uses it
+   * whose prices are kept in code (Anthropic, NVIDIA, Together). Cost tracking uses it
    * unless the pricing table has a row for the provider and model.
    */
   listPrice?: ListPrice;
@@ -108,7 +113,7 @@ export type ModelRoutePosition = 'primary' | 'backup' | 'cross_provider' | 'pref
 export interface ModelRoute {
   model: string;
   position: ModelRoutePosition;
-  via?: 'anthropic' | 'nvidia';
+  via?: 'anthropic' | 'nvidia' | 'together';
 }
 
 export interface ModelRouteUsed {
@@ -131,6 +136,12 @@ export type ModelErrorClassification =
   | 'rate_limited'
   | 'provider_unavailable'
   | 'bad_request'
+  /**
+   * The provider refused because of how the route is set up on this server:
+   * a model that needs a dedicated endpoint, or a key that needs a workspace
+   * header (RJ-024). Another provider may still answer.
+   */
+  | 'route_config_error'
   | 'network_error'
   | 'unknown';
 
@@ -138,7 +149,7 @@ export interface NormalizedModelErrorShape {
   classification: ModelErrorClassification;
   status?: number;
   providerMessage?: string;
-  /** upstream backend used for this error (Together = provider fallback after HF failure for HF repo ids) */
+  /** The provider this error came from. */
   upstream?: ModelRouteProvider | 'unknown';
   /** endpoint attempted when known */
   endpoint?: string;
@@ -512,9 +523,10 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
   };
 }
 
+/** Together: the OpenAI chat-completions shape, with Together's own serverless model ids. */
 async function callTogetherChat(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
   if (!config.together.apiKey?.trim()) {
-    throw new Error('Together fallback provider requires TOGETHER_API_KEY');
+    throw new Error('Together provider requires TOGETHER_API_KEY');
   }
   const start = Date.now();
   const body: Record<string, unknown> = {
@@ -537,6 +549,7 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
   const choice = response.data.choices?.[0];
   if (!choice) throw new Error('No response choices from Together');
 
+  const listPrice = togetherListPrice(model);
   return {
     content: stripModelReasoningTraces(typeof choice.message?.content === 'string' ? choice.message.content : ''),
     model,
@@ -546,9 +559,11 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
     durationMs: Date.now() - start,
     usedFallback: false,
     primaryModel: model,
+    ...(listPrice ? { listPrice } : {}),
   };
 }
-function nvidiaChatEndpoint(): string {
+
+export function nvidiaChatEndpoint(): string {
   return `${config.nvidia.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 }
 
@@ -591,8 +606,24 @@ async function callNvidiaChat(model: string, options: ModelCallOptions): Promise
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
 
-function anthropicMessagesEndpoint(): string {
+export function anthropicMessagesEndpoint(): string {
   return `${config.anthropic.baseUrl.replace(/\/+$/, '')}/messages`;
+}
+
+/**
+ * The headers of every Anthropic request. `anthropic-workspace-id` is sent
+ * only when `ANTHROPIC_WORKSPACE_ID` is set (RJ-024): a key that is not tied
+ * to one workspace is refused without it.
+ */
+export function anthropicRequestHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'x-api-key': config.anthropic.apiKey,
+    'anthropic-version': ANTHROPIC_API_VERSION,
+    'Content-Type': 'application/json',
+  };
+  const workspaceId = config.anthropic.workspaceId?.trim();
+  if (workspaceId) headers['anthropic-workspace-id'] = workspaceId;
+  return headers;
 }
 
 /**
@@ -641,11 +672,7 @@ async function callAnthropicChat(model: string, options: ModelCallOptions): Prom
   const maxTokens = options.maxTokens ?? MAX_TOKENS_MAP[options.role];
   // The Messages API accepts 0 to 1.
   const temperature = Math.min(1, Math.max(0, options.temperature ?? TEMPERATURE_MAP[options.role]));
-  const headers = {
-    'x-api-key': config.anthropic.apiKey,
-    'anthropic-version': ANTHROPIC_API_VERSION,
-    'Content-Type': 'application/json',
-  };
+  const headers = anthropicRequestHeaders();
 
   let accumulatedContent = '';
   let totalPromptTokens = 0;
@@ -824,7 +851,7 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
   };
 }
 
-function togetherChatEndpoint(): string {
+export function togetherChatEndpoint(): string {
   const base = config.together.baseUrl.replace(/\/+$/, '');
   return `${base}/chat/completions`;
 }
@@ -838,45 +865,10 @@ async function callModel(
   const model = route.model;
   if (route.via === 'anthropic') return { result: await callAnthropicChat(model, options), backend: 'Anthropic' };
   if (route.via === 'nvidia') return { result: await callNvidiaChat(model, options), backend: 'NVIDIA' };
-  if (isHfRepoModel(model)) {
-    try {
-      return { result: await callHfChat(model, options), backend: 'HF' };
-    } catch (hfErr) {
-      const canFallbackProvider = Boolean(config.together.apiKey?.trim());
-      if (!canFallbackProvider) throw hfErr;
-      logger.warn('HF provider call failed; attempting Together fallback provider', {
-        role: options.role,
-        model,
-      });
-      try {
-        return { result: await callTogetherChat(model, options), backend: 'Together' };
-      } catch (togetherErr) {
-        const togetherAxios = togetherErr as AxiosError;
-        const classification = axios.isAxiosError(togetherErr)
-          ? classifyModelError(togetherAxios)
-          : classifyHfError(togetherErr);
-        const status = togetherAxios.response?.status;
-        const providerMessage = axios.isAxiosError(togetherErr)
-          ? extractProviderMessage(togetherAxios)
-          : togetherErr instanceof Error
-            ? togetherErr.message
-            : String(togetherErr);
-        throw new NormalizedModelError({
-          classification,
-          status,
-          providerMessage,
-          model,
-          upstream: 'together',
-          endpoint: togetherChatEndpoint(),
-          providerFallbackAttempted: true,
-          providerFallbackBackend: 'together',
-          providerFallbackResult: 'failed',
-          fallbackTried: false,
-          role: options.role,
-        });
-      }
-    }
-  }
+  if (route.via === 'together') return { result: await callTogetherChat(model, options), backend: 'Together' };
+  // A hub id goes to Hugging Face Inference only. It is not sent to Together
+  // under the same name: Together serves its own ids, as its own routes (RJ-024).
+  if (isHfRepoModel(model)) return { result: await callHfChat(model, options), backend: 'HF' };
   return { result: await callOpenRouter(model, options), backend: 'OpenRouter' };
 }
 
@@ -896,6 +888,7 @@ const PROVIDER_SIDE_CLASSIFICATIONS: ReadonlySet<ModelErrorClassification> = new
   'provider_unavailable',
   'network_error',
   'auth_error',
+  'route_config_error',
 ]);
 
 /** A refusal that can clear by itself within seconds: requests in flight settle, a rate window passes. */
@@ -934,10 +927,11 @@ function nativeProviderForRoute(route: ModelRoute): ModelRouteProvider {
 function endpointForRoute(route: ModelRoute): string {
   if (route.via === 'anthropic') return anthropicMessagesEndpoint();
   if (route.via === 'nvidia') return nvidiaChatEndpoint();
+  if (route.via === 'together') return togetherChatEndpoint();
   return isHfRepoModel(route.model) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`;
 }
 
-/** The place a route has in `MODEL_PROVIDER_ORDER`. Hub models share the `together` place. */
+/** The place a route has in `MODEL_PROVIDER_ORDER`. Together's models and the hub models share the `together` place. */
 function slotForRoute(route: Pick<ModelRoute, 'model' | 'via'>): ProviderSlot {
   if (route.via) return route.via;
   return isHfRepoModel(route.model) ? 'together' : 'openrouter';
@@ -989,7 +983,10 @@ export function modelRoutesForCall(args: {
   fallback: string | undefined;
   /** False when the caller supplied its own OpenRouter key and the server has none. */
   openrouterConfigured: boolean;
+  /** True when `HF_TOKEN` is set: the hub models on Hugging Face Inference. */
   hubConfigured: boolean;
+  /** True when `TOGETHER_API_KEY` is set: Together's own serverless models. */
+  togetherConfigured?: boolean;
   /** True when `ANTHROPIC_API_KEY` is set and the call may use the server's account. */
   anthropicConfigured?: boolean;
   /** True when `NVIDIA_API_KEY` is set and the call may use the server's account. */
@@ -1014,7 +1011,14 @@ export function modelRoutesForCall(args: {
 
   const others: Record<ProviderSlot, Array<Pick<ModelRoute, 'model' | 'via'>>> = {
     openrouter: gatewayAndHub.filter((model) => !isHfRepoModel(model)).map((model) => ({ model })),
-    together: gatewayAndHub.filter((model) => isHfRepoModel(model)).map((model) => ({ model })),
+    // Two providers in one place: Together's serverless models, then the hub
+    // models on Hugging Face Inference. Each is its own route.
+    together: [
+      ...(args.togetherConfigured
+        ? togetherModelsForRole(args.role).map((model): Pick<ModelRoute, 'model' | 'via'> => ({ model, via: 'together' }))
+        : []),
+      ...gatewayAndHub.filter((model) => isHfRepoModel(model)).map((model) => ({ model })),
+    ],
     anthropic: args.anthropicConfigured
       ? [{ model: anthropicModelsByRole(config.anthropic.models)[args.role], via: 'anthropic' }]
       : [],
@@ -1071,7 +1075,8 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     // A caller who brought their own OpenRouter key chose where their request
     // goes and who pays. Their request is never moved onto the platform's
     // Hugging Face or Together accounts.
-    hubConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.hfToken?.trim() || config.together.apiKey?.trim()),
+    hubConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.hfToken?.trim()),
+    togetherConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.together.apiKey?.trim()),
     // The same holds for the server's Anthropic and NVIDIA accounts.
     anthropicConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.anthropic.apiKey?.trim()),
     nvidiaConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.nvidia.apiKey?.trim()),
@@ -1087,8 +1092,8 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     /**
      * Whether any refusal of the role's own models on this pass was about the
      * provider. One such refusal is enough: a backup the provider no longer
-     * carries, or a second host that does not carry a hub model, does not
-     * cancel the outage or the empty account that came before it.
+     * carries does not cancel the outage or the empty account that came
+     * before it.
      */
     let ownProviderSideRefusal = false;
     for (const route of routes) {
@@ -1111,18 +1116,6 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         const { result, backend } = await callModel(route, prepared);
         const provider = providerForBackend(backend);
         logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
-        // Together answers a hub model only after Hugging Face failed for it.
-        // That refusal is on the record too.
-        if (backend === 'Together') {
-          attempts.push({
-            model: route.model,
-            provider: 'huggingface_inference',
-            position: route.position,
-            round,
-            outcome: 'refused',
-            classification: 'provider_unavailable',
-          });
-        }
         attempts.push({ model: route.model, provider, position: route.position, round, outcome: 'answered' });
         // A provider the server's order puts first is not a fallback: nothing was refused to reach it.
         const usedFallback = route.position === 'backup' || route.position === 'cross_provider';
@@ -1151,29 +1144,21 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
       } catch (err) {
         const normalized = normalizeRouteError(err, route, options.role, route.position !== 'primary');
         const ownRoute = route.position === 'primary' || route.position === 'backup';
-        // A hub model that reached Together did so because Hugging Face had
-        // already failed for it, which is a refusal about the provider.
-        const hubHostFailedFirst = normalized.upstream === 'together' && normalized.providerFallbackAttempted === true;
-        if (ownRoute && (PROVIDER_SIDE_CLASSIFICATIONS.has(normalized.classification) || hubHostFailedFirst)) {
+        if (ownRoute && PROVIDER_SIDE_CLASSIFICATIONS.has(normalized.classification)) {
           ownProviderSideRefusal = true;
+        }
+        if (normalized.classification === 'route_config_error') {
+          warnRouteConfigurationOnce({
+            provider: nativeProviderForRoute(route),
+            model: route.model,
+            reason: routeConfigurationReason(normalized.providerMessage),
+          });
         }
         firstClassification ??= normalized.classification;
         if (ownRoute) ownModelsError = normalized;
-        // A hub model is tried on Hugging Face and then on Together. When the
-        // second one refused as well, both refusals are on the record.
-        if (normalized.upstream === 'together' && normalized.providerFallbackAttempted) {
-          attempts.push({
-            model: route.model,
-            provider: 'huggingface_inference',
-            position: route.position,
-            round,
-            outcome: 'refused',
-            classification: 'provider_unavailable',
-          });
-        }
         attempts.push({
           model: route.model,
-          provider: normalized.upstream === 'together' ? 'together' : nativeProviderForRoute(route),
+          provider: nativeProviderForRoute(route),
           position: route.position,
           round,
           outcome: 'refused',
@@ -1219,6 +1204,39 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
   throw failure;
 }
 
+const routeConfigurationWarned = new Set<string>();
+
+/**
+ * Tell an administrator, once per process, that a route can never answer as
+ * it is set up. The line goes to the server log only: nothing here is put on
+ * a run, a report or anything a customer reads. The call itself has already
+ * moved on to the next route.
+ *
+ * Once per provider and reason, and per model when the reason is the model.
+ */
+export function warnRouteConfigurationOnce(args: {
+  provider: ModelRouteProvider;
+  model: string;
+  reason: RouteConfigurationReason | null;
+}): void {
+  if (!args.reason) return;
+  const key =
+    args.reason === 'model_needs_dedicated_endpoint'
+      ? `${args.provider}:${args.reason}:${args.model}`
+      : `${args.provider}:${args.reason}`;
+  if (routeConfigurationWarned.has(key)) return;
+  routeConfigurationWarned.add(key);
+  logger.warn(
+    `ADMIN: the ${args.provider} route is set up in a way that can never answer (${args.reason}). ${ROUTE_CONFIGURATION_ADVICE[args.reason]} Calls move on to the next provider until this is fixed. This is logged once per process.`,
+    { adminOnly: true, provider: args.provider, model: args.model, reason: args.reason }
+  );
+}
+
+/** Test helper: forget which route configuration warnings were logged. @internal */
+export function _resetRouteConfigurationWarnings(): void {
+  routeConfigurationWarned.clear();
+}
+
 function classifyHfError(err: unknown): ModelErrorClassification {
   if (err instanceof Error) {
     const m = err.message.toLowerCase();
@@ -1229,7 +1247,7 @@ function classifyHfError(err: unknown): ModelErrorClassification {
   return 'provider_unavailable';
 }
 
-function classifyModelError(err: AxiosError): ModelErrorClassification {
+export function classifyModelError(err: AxiosError): ModelErrorClassification {
   const status = err.response?.status;
 
   if (!status) return 'network_error';
@@ -1254,17 +1272,22 @@ function classifyModelError(err: AxiosError): ModelErrorClassification {
     return 'bad_request';
   }
   if (status === 400) {
+    const message = extractProviderMessage(err);
     // Anthropic reports an empty account as a 400 whose message says the
     // credit balance is too low. That is about the account, not the request.
-    if (/credit balance is too low|insufficient (credits|funds|quota|balance)|insufficient_quota/i.test(extractProviderMessage(err))) {
+    if (/credit balance is too low|insufficient (credits|funds|quota|balance)|insufficient_quota/i.test(message)) {
       return 'quota_exceeded';
     }
+    // A model that needs a dedicated endpoint, or a key that needs a workspace
+    // header: the route is set up wrongly on this server. The request itself
+    // is sound, so another provider is asked.
+    if (routeConfigurationReason(message)) return 'route_config_error';
     return 'bad_request';
   }
   return 'unknown';
 }
 
-function extractProviderMessage(err: AxiosError): string {
+export function extractProviderMessage(err: AxiosError): string {
   const data = err.response?.data as unknown;
   if (typeof data === 'string') return data;
   if (data && typeof data === 'object') {

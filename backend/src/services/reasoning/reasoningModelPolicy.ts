@@ -303,10 +303,10 @@ const BASE_ALLOWLIST = [
   // separately.
   'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
 
-  // ── Cross-provider backups hosted on BOTH Hugging Face Inference and Together (RJ-019) ──
   // The hub forms of the DeepSeek V3.x line already approved above as
-  // OpenRouter slugs. Reached only after a role's own model and backup were
-  // refused; the same id is sent to Hugging Face and then to Together.
+  // OpenRouter slugs (RJ-019). They are no longer a cross-provider backup:
+  // Together answers 400 "non-serverless model" for both (measured 10 Oct
+  // 2026, RJ-024). They stay approved so a saved per-run choice still validates.
   'deepseek-ai/DeepSeek-V3.1',
   'deepseek-ai/DeepSeek-V3',
 
@@ -329,15 +329,17 @@ const BASE_ALLOWLIST = [
  * above; nothing is added to it.
  *
  * `openrouter` ids go through the OpenRouter gateway. `hub` ids are Hugging
- * Face repository ids: they go to Hugging Face Inference and, when that fails
- * and a Together key is set, to Together with the same id.
+ * Face repository ids and go to Hugging Face Inference only. Together is a
+ * separate provider with its own serverless ids, listed in
+ * `openrouter/providerRoutes.ts` (`TOGETHER_BACKUP_MODELS`): a hub id is not
+ * assumed to exist on Together (RJ-024).
  *
  * These are a last resort, in order. They are never a role's default: a role
  * keeps its own primary and backup, and reaches this list only after both
  * failed.
  *
  * Only low-refusal lines are listed (abliterated weights, Hermes, DeepSeek
- * V3.x), so the list is safe for every role, the challenge roles included. The
+ * V3.x on the gateway), so the list is safe for every role, the challenge roles included. The
  * refusal-aligned instruct bases that are allowlisted for a person to opt into
  * (`meta-llama/Llama-3.3-70B-Instruct`, `Qwen/Qwen2.5-*-Instruct`) are left
  * out on purpose: reaching one automatically would put a refused or softened
@@ -345,11 +347,6 @@ const BASE_ALLOWLIST = [
  * `docs/V2_MODEL_SELECTION_CRITERIA.md`.
  */
 const CROSS_PROVIDER_BACKUPS: ReadonlyArray<{ model: string; family: 'openrouter' | 'hub' }> = [
-  // First: ids that Together serves under the same name as the hub does, so
-  // the Together key is a real second host for them and not only a retry of
-  // an id Together does not carry.
-  { model: 'deepseek-ai/DeepSeek-V3.1', family: 'hub' },
-  { model: 'deepseek-ai/DeepSeek-V3', family: 'hub' },
   { model: 'NousResearch/Hermes-3-Llama-3.1-70B', family: 'hub' },
   { model: 'huihui-ai/Llama-3.3-70B-Instruct-abliterated', family: 'hub' },
   { model: 'huihui-ai/Qwen2.5-72B-Instruct-abliterated', family: 'hub' },

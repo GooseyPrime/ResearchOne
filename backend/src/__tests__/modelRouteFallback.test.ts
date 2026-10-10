@@ -73,6 +73,7 @@ import {
   modelRoutesForCall,
   NormalizedModelError,
 } from '../services/openrouter/openrouterService';
+import { TOGETHER_BACKUP_MODELS } from '../services/openrouter/providerRoutes';
 import {
   APPROVED_REASONING_MODEL_ALLOWLIST,
   crossProviderBackupModelsForRole,
@@ -126,14 +127,14 @@ describe('a model call that one provider refuses for credit', () => {
 
     expect(result.content).toContain('written by');
     expect(result.routeUsed?.position).toBe('cross_provider');
-    expect(result.routeUsed?.provider).toBe('huggingface_inference');
+    expect(result.routeUsed?.provider).toBe('together');
     expect(result.usedFallback).toBe(true);
     // The order the role already had comes first, and nothing in it is skipped.
     expect(h.calls.slice(0, 2)).toEqual([
       { provider: 'openrouter', model: PRIMARY },
       { provider: 'openrouter', model: BACKUP },
     ]);
-    expect(h.calls[2].provider).toBe('huggingface_inference');
+    expect(h.calls[2]).toEqual({ provider: 'together', model: TOGETHER_BACKUP_MODELS[0] });
   });
 
   it('records which route answered and which were refused, for diagnostics', async () => {
@@ -144,19 +145,19 @@ describe('a model call that one provider refuses for credit', () => {
     expect(result.routesTried?.map((attempt) => [attempt.position, attempt.provider, attempt.outcome, attempt.classification])).toEqual([
       ['primary', 'openrouter', 'refused', 'quota_exceeded'],
       ['backup', 'openrouter', 'refused', 'quota_exceeded'],
-      ['cross_provider', 'huggingface_inference', 'answered', undefined],
+      ['cross_provider', 'together', 'answered', undefined],
     ]);
     expect(result.errorClassification).toBe('quota_exceeded');
     expect(result.primaryModel).toBe(PRIMARY);
   });
 
-  it('goes on to the next gateway when the first cross-provider route is down too', async () => {
+  it('goes on to Hugging Face when Together is down too', async () => {
     h.openrouter = () => 402;
-    h.hub = () => 'fail';
+    h.together = () => 503;
 
     const result = await write();
 
-    expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together' });
+    expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'huggingface_inference' });
   });
 
   it('writes the report on Together when OpenRouter is out of credit and Hugging Face cannot answer', async () => {
@@ -170,8 +171,8 @@ describe('a model call that one provider refuses for credit', () => {
     expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together' });
     const togetherCalls = h.calls.filter((call) => call.provider === 'together');
     expect(togetherCalls).toHaveLength(1);
-    // The id sent to Together is one Together carries under that name.
-    expect(togetherCalls[0].model).toBe('deepseek-ai/DeepSeek-V3.1');
+    // The id sent to Together is one Together serves without a dedicated endpoint.
+    expect(togetherCalls[0].model).toBe('deepseek-ai/DeepSeek-V4.1-Flash');
   });
 
   it('writes the report on Together when there is no Hugging Face token at all', async () => {
@@ -188,23 +189,33 @@ describe('a model call that one provider refuses for credit', () => {
     h.openrouter = () => 402;
     h.hub = () => 'fail';
     // Together answers 404 for a model it does not carry.
-    h.together = (model) => (model === 'deepseek-ai/DeepSeek-V3.1' ? 404 : 'ok');
+    h.together = (model) => (model === 'deepseek-ai/DeepSeek-V4.1-Flash' ? 404 : 'ok');
 
     const result = await write();
 
-    expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together', model: 'deepseek-ai/DeepSeek-V3' });
+    expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together', model: 'zai-org/GLM-5.3-Flash' });
   });
 
-  it('records the Hugging Face refusal as well when Together is the one that answers', async () => {
+  it('never sends a hub id to Together, and never a Together id to Hugging Face', async () => {
     h.openrouter = () => 402;
     h.hub = () => 'fail';
+    h.together = () => 503;
+
+    await write().catch(() => null);
+
+    const sentTo = (provider: string): string[] => h.calls.filter((call) => call.provider === provider).map((call) => call.model);
+    expect(sentTo('together')).toEqual([...TOGETHER_BACKUP_MODELS]);
+    expect(sentTo('huggingface_inference').length).toBeGreaterThan(0);
+    for (const model of sentTo('huggingface_inference')) expect(TOGETHER_BACKUP_MODELS).not.toContain(model);
+  });
+
+  it('records one refusal per request made: a Together answer implies no Hugging Face request', async () => {
+    h.openrouter = () => 402;
 
     const result = await write();
 
-    expect(result.routesTried?.slice(-2).map((attempt) => [attempt.provider, attempt.outcome])).toEqual([
-      ['huggingface_inference', 'refused'],
-      ['together', 'answered'],
-    ]);
+    expect(h.calls.some((call) => call.provider === 'huggingface_inference')).toBe(false);
+    expect(result.routesTried?.some((attempt) => attempt.provider === 'huggingface_inference')).toBe(false);
   });
 
   it('still tries other providers when the role model is out of credit and its backup is no longer carried', async () => {
@@ -215,7 +226,7 @@ describe('a model call that one provider refuses for credit', () => {
     expect(result.routeUsed?.position).toBe('cross_provider');
   });
 
-  it('still tries other providers when a hub role model is down and Together does not carry it', async () => {
+  it('still tries other providers when a hub role model is down, without sending its id to Together', async () => {
     h.hub = (model) => (model === 'NousResearch/Hermes-3-Llama-3.1-70B' ? 'fail' : 'ok');
     h.together = () => 404;
 
@@ -226,6 +237,7 @@ describe('a model call that one provider refuses for credit', () => {
     });
 
     expect(result.routeUsed?.position).toBe('cross_provider');
+    expect(h.calls.some((call) => call.provider === 'together' && call.model === 'NousResearch/Hermes-3-Llama-3.1-70B')).toBe(false);
   });
 
   it('never moves a request made with the customer\'s own key onto the platform\'s other providers', async () => {
@@ -283,7 +295,7 @@ describe('a model call that one provider refuses for credit', () => {
     expect(providers).toEqual(new Set(['openrouter', 'huggingface_inference', 'together']));
     expect(failure.routesTried?.every((attempt) => attempt.outcome === 'refused')).toBe(true);
     // Every approved backup on every configured provider was tried.
-    const expected = modelRoutesForCall({ role: 'section_drafter', primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: true });
+    const expected = modelRoutesForCall({ role: 'section_drafter', primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: true, togetherConfigured: true });
     expect(new Set(failure.routesTried?.map((attempt) => attempt.model))).toEqual(new Set(expected.map((route) => route.model)));
   });
 
@@ -320,7 +332,7 @@ describe('a model call that one provider refuses for credit', () => {
     expect(h.calls.every((call) => call.provider === 'openrouter')).toBe(true);
   });
 
-  it('reaches the backup when the role model is a hub model and both of its hosts are down', async () => {
+  it('reaches the backup when the role model is a hub model and Hugging Face is down', async () => {
     h.hub = () => 'fail';
     h.together = () => 503;
 
