@@ -1,9 +1,18 @@
 /**
- * RJ-021. Two more providers for every role, and one setting for the order.
+ * RJ-021, changed by RJ-025. Anthropic (called directly) and NVIDIA NIM as
+ * providers, and one setting for the order.
  *
- * OpenRouter's account was empty and no report could be written. Anthropic
- * (called directly) and NVIDIA NIM are added to the routes of every role, and
- * `MODEL_PROVIDER_ORDER` decides the order they are tried in.
+ * RJ-021 gave every role a Claude model on Anthropic and a model on NVIDIA
+ * picked by size. RJ-025 took that away: a call moves to another provider
+ * only for the same model, and to Anthropic only when the role's model is a
+ * Claude model. The cases here that asserted "every role has a model on each
+ * added provider" were replaced. What is still tested: how each provider is
+ * called, how its refusals are read, the order setting, what a customer is
+ * told, and what a call costs.
+ *
+ * NVIDIA and Together serve none of the models a role chooses today, so the
+ * cases about how they are called add a row to the provider table for the
+ * length of one test.
  *
  * Only the outside world is replaced here: the HTTP client and the Hugging Face
  * client. The routing, the order, the request sent to each provider and the
@@ -120,14 +129,10 @@ import {
   type ModelRole,
 } from '../services/openrouter/openrouterService';
 import {
-  ANTHROPIC_DEFAULT_MODELS,
   DEFAULT_MODEL_PROVIDER_ORDER,
-  NVIDIA_DEFAULT_MODELS,
-  ROUTE_MODEL_CLASS_BY_ROLE,
-  TOGETHER_BACKUP_MODELS,
-  anthropicModelsByRole,
-  nvidiaModelsByRole,
+  SAME_MODEL_PROVIDER_TABLE,
   parseModelProviderOrder,
+  type SameModelEntry,
 } from '../services/openrouter/providerRoutes';
 import { REASONING_MODEL_ROLES } from '../services/reasoning/reasoningModelPolicy';
 import { buildResearchFailureDetails } from '../services/reasoning/researchOrchestrator';
@@ -135,12 +140,45 @@ import { decideRunStateOnFailure } from '../services/reasoning/runStateMachine';
 import { customerFailureMessage, runRowForCustomer } from '../services/reasoning/customerFailureMessage';
 import { runChargeDecision } from '../services/billing/runChargeDecision';
 
-const PRIMARY = 'deepseek/deepseek-v3.2';
+/** A Claude model a role may choose. Anthropic serves the same model as `CLAUDE_DIRECT`. */
+const CLAUDE = 'anthropic/claude-sonnet-4.5';
+const CLAUDE_DIRECT = 'claude-sonnet-4-5-20250929';
+/** A model that is not Claude. Hugging Face Inference serves the same model as `OPEN_ON_HUB`. */
+const OPEN = 'deepseek/deepseek-v3.2';
+const OPEN_ON_HUB = 'deepseek-ai/DeepSeek-V3.2';
+/** The backup the role names. A different model: it is never called. */
 const BACKUP = 'moonshotai/kimi-k2-thinking';
 const OUT_OF_CREDIT =
   'This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.';
 const ANTHROPIC_OUT_OF_CREDIT =
   'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.';
+
+/** A Claude model that, for a test, every provider serves. */
+const EVERYWHERE = 'anthropic/claude-test';
+const EVERYWHERE_ROW: SameModelEntry = {
+  name: 'Claude Test',
+  claude: true,
+  servedBy: {
+    openrouter: EVERYWHERE,
+    anthropic: 'claude-test',
+    together: 'anthropic/Claude-Test-Together',
+    huggingface_inference: 'NousResearch/Claude-Test-Hub',
+    nvidia: 'anthropic/claude-test-nim',
+  },
+};
+/** Claude Haiku 5.5 is priced by prompt length. No role chooses it, so the costing case adds it for one test. */
+const HAIKU_ROW: SameModelEntry = {
+  name: 'Claude Haiku 5.5',
+  claude: true,
+  servedBy: { openrouter: 'anthropic/claude-haiku-5.5', anthropic: 'claude-haiku-5-5' },
+};
+
+const table = SAME_MODEL_PROVIDER_TABLE as SameModelEntry[];
+const addedRows: SameModelEntry[] = [];
+function addTableRow(row: SameModelEntry): void {
+  table.push(row);
+  addedRows.push(row);
+}
 
 const was = {
   openrouterKey: config.openrouter.apiKey,
@@ -153,10 +191,14 @@ const was = {
   delays: [...modelRouteRetry.delaysMs],
 };
 
-function call(role: ModelRole = 'section_drafter', extra: { byokApiKeyOverride?: string } = {}): Promise<ModelCallResult> {
+function call(
+  role: ModelRole = 'section_drafter',
+  primary: string = CLAUDE,
+  extra: { byokApiKeyOverride?: string } = {}
+): Promise<ModelCallResult> {
   return callRoleModel({
     role,
-    runtimeOverrides: { primary: PRIMARY, fallback: BACKUP },
+    runtimeOverrides: { primary, fallback: BACKUP },
     messages: [
       { role: 'system', content: 'Write the section.' },
       { role: 'user', content: 'Section 3.' },
@@ -186,6 +228,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const row of addedRows.splice(0)) table.splice(table.indexOf(row), 1);
   config.openrouter.apiKey = was.openrouterKey;
   config.anthropic.apiKey = was.anthropicKey;
   config.nvidia.apiKey = was.nvidiaKey;
@@ -196,21 +239,20 @@ afterEach(() => {
   modelRouteRetry.delaysMs = [...was.delays];
 });
 
-describe('a role call when OpenRouter refuses for credit (402)', () => {
-  it('is answered by Anthropic, after the role model and its backup were both tried', async () => {
+describe('a Claude role call when OpenRouter refuses for credit (402)', () => {
+  it('is answered by Anthropic with the same Claude model, and the role backup is not called', async () => {
     h.openrouter = () => ({ status: 402, message: OUT_OF_CREDIT });
 
     const result = await call('section_drafter');
 
     expect(h.sent.map((request) => [request.provider, request.model])).toEqual([
-      ['openrouter', PRIMARY],
-      ['openrouter', BACKUP],
-      ['anthropic', ANTHROPIC_DEFAULT_MODELS.strong],
+      ['openrouter', CLAUDE],
+      ['anthropic', CLAUDE_DIRECT],
     ]);
-    expect(result.content).toBe(`written by ${ANTHROPIC_DEFAULT_MODELS.strong}`);
-    expect(result.routeUsed).toEqual({ model: ANTHROPIC_DEFAULT_MODELS.strong, provider: 'anthropic', position: 'cross_provider' });
+    expect(result.content).toBe(`written by ${CLAUDE_DIRECT}`);
+    expect(result.routeUsed).toEqual({ model: CLAUDE_DIRECT, provider: 'anthropic', position: 'cross_provider' });
     expect(result.usedFallback).toBe(true);
-    expect(result.primaryModel).toBe(PRIMARY);
+    expect(result.primaryModel).toBe(CLAUDE);
     expect(result.promptTokens).toBe(1200);
     expect(result.completionTokens).toBe(300);
   });
@@ -237,116 +279,156 @@ describe('a role call when OpenRouter refuses for credit (402)', () => {
 
     expect(result.routesTried?.map((attempt) => [attempt.provider, attempt.outcome, attempt.classification ?? null, attempt.status ?? null])).toEqual([
       ['openrouter', 'refused', 'quota_exceeded', 402],
-      ['openrouter', 'refused', 'quota_exceeded', 402],
       ['anthropic', 'answered', null, null],
     ]);
     // Cost tracking is given the same record, with Anthropic's published price for the model.
     expect(h.emitted).toHaveLength(1);
     const emitted = h.emitted[0] as ModelCallResult;
     expect(emitted.routeUsed?.provider).toBe('anthropic');
-    expect(emitted.model).toBe(ANTHROPIC_DEFAULT_MODELS.strong);
-    expect(emitted.listPrice).toEqual({ inputPricePer1mUsd: 2, outputPricePer1mUsd: 10 });
+    expect(emitted.model).toBe(CLAUDE_DIRECT);
+    expect(emitted.listPrice?.inputPricePer1mUsd).toBeCloseTo(3, 9);
+    expect(emitted.listPrice?.outputPricePer1mUsd).toBeCloseTo(15, 9);
   });
 
-  it('uses the low-cost Claude model for a planning call and the strong one for writing', async () => {
+  it('uses the same Claude model whatever the role: there is no model picked by the size of the task any more', async () => {
     h.openrouter = () => 402;
 
     const planned = await call('planner');
     const written = await call('synthesizer');
 
-    expect(planned.routeUsed?.model).toBe(ANTHROPIC_DEFAULT_MODELS.fast);
-    expect(written.routeUsed?.model).toBe(ANTHROPIC_DEFAULT_MODELS.strong);
-    expect(ANTHROPIC_DEFAULT_MODELS.fast).not.toBe(ANTHROPIC_DEFAULT_MODELS.strong);
+    expect(planned.routeUsed?.model).toBe(CLAUDE_DIRECT);
+    expect(written.routeUsed?.model).toBe(CLAUDE_DIRECT);
   });
 
   it('does not move to another provider when OpenRouter called the request itself malformed', async () => {
     h.openrouter = () => 400;
 
     await expect(call()).rejects.toBeInstanceOf(NormalizedModelError);
-    expect(providersCalled()).toEqual(['openrouter', 'openrouter']);
+    expect(providersCalled()).toEqual(['openrouter']);
   });
 });
 
-describe('a role call when OpenRouter refuses and Anthropic has no key', () => {
-  it('skips Anthropic and goes to Together, with a model Together serves', async () => {
+describe('a role whose model is not Claude', () => {
+  it.each(REASONING_MODEL_ROLES.map((role) => [role]))('%s is never sent to Anthropic, NVIDIA or Together', async (role) => {
     h.openrouter = () => 402;
-    config.anthropic.apiKey = '';
 
-    const result = await call();
+    const result = await call(role, OPEN);
 
-    expect(providersCalled()).toEqual(['openrouter', 'openrouter', 'together']);
-    expect(result.routeUsed).toEqual({ model: TOGETHER_BACKUP_MODELS[0], provider: 'together', position: 'cross_provider' });
-  });
-
-  it('goes to the hub models on Hugging Face when every Together model is refused', async () => {
-    h.openrouter = () => 402;
-    config.anthropic.apiKey = '';
-    h.together = () => 503;
-
-    const result = await call();
-
-    expect(providersCalled()).not.toContain('anthropic');
-    expect(providersCalled().filter((provider) => provider === 'together')).toHaveLength(TOGETHER_BACKUP_MODELS.length);
-    expect(providersCalled().lastIndexOf('together')).toBeLessThan(providersCalled().indexOf('huggingface_inference'));
+    expect(h.sent.map((request) => [request.provider, request.model])).toEqual([
+      ['openrouter', OPEN],
+      ['huggingface_inference', OPEN_ON_HUB],
+    ]);
     expect(result.routeUsed?.provider).toBe('huggingface_inference');
   });
 
-  it('goes on to NVIDIA when the hub models are refused as well', async () => {
+  it('fails when its own provider and the one other provider that serves the model both refuse, with Anthropic, NVIDIA and Together idle', async () => {
     h.openrouter = () => 402;
-    config.anthropic.apiKey = '';
     h.hub = () => 'fail';
+
+    await expect(call('section_drafter', OPEN)).rejects.toBeInstanceOf(NormalizedModelError);
+
+    expect(providersCalled()).toEqual(['openrouter', 'huggingface_inference']);
+  });
+});
+
+describe('how NVIDIA and Together are called, for a model they serve', () => {
+  beforeEach(() => {
+    addTableRow(EVERYWHERE_ROW);
+    h.openrouter = () => 402;
+    h.anthropic = () => 529;
+  });
+
+  it('calls Together at its own address, with its own key and the id the table gives the model there', async () => {
+    const result = await call('section_drafter', EVERYWHERE);
+
+    expect(result.routeUsed).toEqual({ model: 'anthropic/Claude-Test-Together', provider: 'together', position: 'cross_provider' });
+    const request = h.sent.find((sent) => sent.provider === 'together');
+    expect(request?.url).toBe('https://api.together.xyz/v1/chat/completions');
+    expect(request?.headers.Authorization).toBe('Bearer test-together');
+    expect(request?.body.model).toBe('anthropic/Claude-Test-Together');
+  });
+
+  it('goes on to Hugging Face Inference, then NVIDIA, each with its own id for the model', async () => {
     h.together = () => 503;
+    h.hub = () => 'fail';
 
-    const result = await call('section_drafter');
+    const result = await call('section_drafter', EVERYWHERE);
 
-    expect(providersCalled()).not.toContain('anthropic');
-    expect(result.routeUsed).toEqual({ model: NVIDIA_DEFAULT_MODELS.strong, provider: 'nvidia', position: 'cross_provider' });
-    // NVIDIA comes after every Together and hub model and before more models on the provider that refused first.
-    const nvidiaAt = providersCalled().indexOf('nvidia');
-    expect(providersCalled().lastIndexOf('together')).toBeLessThan(nvidiaAt);
-    expect(providersCalled().lastIndexOf('huggingface_inference')).toBeLessThan(nvidiaAt);
-    expect(providersCalled()).toContain('huggingface_inference');
-    expect(providersCalled().lastIndexOf('openrouter')).toBe(1);
-    const request = h.sent[nvidiaAt];
+    expect(h.sent.map((request) => [request.provider, request.model])).toEqual([
+      ['openrouter', EVERYWHERE],
+      ['anthropic', 'claude-test'],
+      ['together', 'anthropic/Claude-Test-Together'],
+      ['huggingface_inference', 'NousResearch/Claude-Test-Hub'],
+      ['nvidia', 'anthropic/claude-test-nim'],
+    ]);
+    expect(result.routeUsed).toEqual({ model: 'anthropic/claude-test-nim', provider: 'nvidia', position: 'cross_provider' });
+    const request = h.sent[h.sent.length - 1];
     expect(request.url).toBe('https://integrate.api.nvidia.com/v1/chat/completions');
     expect(request.headers.Authorization).toBe('Bearer test-nvidia');
     expect(result.listPrice).toEqual({ inputPricePer1mUsd: 0, outputPricePer1mUsd: 0 });
   });
 
   it('goes straight to NVIDIA when it is the only other provider with a key', async () => {
-    h.openrouter = () => 402;
     config.anthropic.apiKey = '';
     config.together.apiKey = '';
     config.hfToken = '';
 
-    const result = await call('planner');
+    const result = await call('planner', EVERYWHERE);
 
-    expect(providersCalled()).toEqual(['openrouter', 'openrouter', 'nvidia']);
-    expect(result.routeUsed?.model).toBe(NVIDIA_DEFAULT_MODELS.fast);
+    expect(providersCalled()).toEqual(['openrouter', 'nvidia']);
+    expect(result.routeUsed?.model).toBe('anthropic/claude-test-nim');
   });
 
   it('uses the NVIDIA address from NVIDIA_BASE_URL when one is set', async () => {
-    h.openrouter = () => 402;
     config.anthropic.apiKey = '';
     config.together.apiKey = '';
     config.hfToken = '';
     const before = config.nvidia.baseUrl;
     config.nvidia.baseUrl = 'https://nvidia-nim.example.test/v1/';
     try {
-      await call();
+      await call('section_drafter', EVERYWHERE);
       expect(h.sent[h.sent.length - 1].url).toBe('https://nvidia-nim.example.test/v1/chat/completions');
     } finally {
       config.nvidia.baseUrl = before;
     }
   });
+
+  it('fails only when every provider refused, and reports the refusal of the role own provider with all routes listed', async () => {
+    h.anthropic = () => ({ status: 400, message: ANTHROPIC_OUT_OF_CREDIT });
+    h.hub = () => 'fail';
+    h.together = () => 429;
+    h.nvidia = () => 429;
+
+    const failure = await call('section_drafter', EVERYWHERE).then(
+      () => null,
+      (err: unknown) => err
+    );
+
+    expect(failure).toBeInstanceOf(NormalizedModelError);
+    const normalized = failure as NormalizedModelError;
+    expect(normalized.upstream).toBe('openrouter');
+    expect(normalized.classification).toBe('quota_exceeded');
+    expect(normalized.routesTried?.map((attempt) => attempt.provider)).toEqual([
+      'openrouter',
+      'anthropic',
+      'together',
+      'huggingface_inference',
+      'nvidia',
+    ]);
+    expect(normalized.routesTried?.every((attempt) => attempt.outcome === 'refused')).toBe(true);
+  });
 });
 
-describe('a refusal from one of the added providers', () => {
-  it('moves on when Anthropic is out of credit, which it reports as a 400 about the credit balance', async () => {
+describe('a refusal from Anthropic', () => {
+  beforeEach(() => {
+    addTableRow(EVERYWHERE_ROW);
     h.openrouter = () => 402;
+  });
+
+  it('moves on when Anthropic is out of credit, which it reports as a 400 about the credit balance', async () => {
     h.anthropic = () => ({ status: 400, message: ANTHROPIC_OUT_OF_CREDIT });
 
-    const result = await call();
+    const result = await call('section_drafter', EVERYWHERE);
 
     expect(result.routeUsed?.provider).toBe('together');
     const refusal = result.routesTried?.find((attempt) => attempt.provider === 'anthropic');
@@ -354,20 +436,18 @@ describe('a refusal from one of the added providers', () => {
   });
 
   it('moves on when Anthropic is rate limited (429)', async () => {
-    h.openrouter = () => 402;
     h.anthropic = () => 429;
 
-    const result = await call();
+    const result = await call('section_drafter', EVERYWHERE);
 
     expect(result.routeUsed?.provider).not.toBe('anthropic');
     expect(result.routesTried?.find((attempt) => attempt.provider === 'anthropic')?.classification).toBe('rate_limited');
   });
 
   it('never puts a declined answer into a report: a model that declines counts as a refused route', async () => {
-    h.openrouter = () => 402;
     h.anthropic = () => ({ stopReason: 'refusal', text: 'I cannot help with that.' });
 
-    const result = await call('double_check');
+    const result = await call('double_check', EVERYWHERE);
 
     expect(result.content).not.toContain('cannot help');
     expect(result.routeUsed?.provider).not.toBe('anthropic');
@@ -375,11 +455,10 @@ describe('a refusal from one of the added providers', () => {
   });
 
   it('sends the request once more without a temperature when the model takes none', async () => {
-    h.openrouter = () => 402;
     h.anthropic = (request) =>
       'temperature' in request.body ? { status: 400, message: '`temperature` is not supported by this model.' } : 'ok';
 
-    const result = await call();
+    const result = await call('section_drafter', CLAUDE);
 
     const requests = h.sent.filter((sent) => sent.provider === 'anthropic');
     expect(requests).toHaveLength(2);
@@ -389,7 +468,7 @@ describe('a refusal from one of the added providers', () => {
   });
 
   it('costs each request of a continued answer at its own price step, not all of them at the highest', async () => {
-    h.openrouter = () => 402;
+    addTableRow(HAIKU_ROW);
     let nth = 0;
     h.anthropic = () => {
       nth += 1;
@@ -398,8 +477,9 @@ describe('a refusal from one of the added providers', () => {
         : { stopReason: 'end_turn', text: 'second half', inputTokens: 105_000 };
     };
 
-    const result = await call('planner');
+    const result = await call('planner', 'anthropic/claude-haiku-5.5');
 
+    expect(result.model).toBe('claude-haiku-5-5');
     expect(result.content).toBe('first half, second half');
     expect(result.promptTokens).toBe(200_000);
     expect(result.completionTokens).toBe(600);
@@ -409,114 +489,28 @@ describe('a refusal from one of the added providers', () => {
     expect(inputCost).toBeCloseTo(0.0095 + 0.0525, 9);
     expect(outputCost).toBeCloseTo(0.00015 + 0.00075, 9);
   });
-
-  it('fails only when every provider refused, and reports the refusal of the role models with all routes listed', async () => {
-    h.openrouter = () => 402;
-    h.anthropic = () => ({ status: 400, message: ANTHROPIC_OUT_OF_CREDIT });
-    h.hub = () => 'fail';
-    h.together = () => 429;
-    h.nvidia = () => 429;
-
-    const failure = await call().then(
-      () => null,
-      (err: unknown) => err
-    );
-
-    expect(failure).toBeInstanceOf(NormalizedModelError);
-    const normalized = failure as NormalizedModelError;
-    expect(normalized.upstream).toBe('openrouter');
-    expect(normalized.classification).toBe('quota_exceeded');
-    const tried = new Set(normalized.routesTried?.map((attempt) => attempt.provider));
-    expect([...tried].sort()).toEqual(['anthropic', 'huggingface_inference', 'nvidia', 'openrouter', 'together']);
-    expect(normalized.routesTried?.every((attempt) => attempt.outcome === 'refused')).toBe(true);
-  });
-});
-
-describe('every role has a model on each added provider', () => {
-  it.each(REASONING_MODEL_ROLES.map((role) => [role]))('%s', (role) => {
-    expect(ROUTE_MODEL_CLASS_BY_ROLE[role]).toMatch(/^(fast|strong)$/);
-    expect(anthropicModelsByRole()[role]).toMatch(/^claude-/);
-    expect(nvidiaModelsByRole()[role]).toMatch(/^[a-z0-9-]+\/[a-z0-9.-]+$/);
-
-    const routes = modelRoutesForCall({
-      role,
-      primary: PRIMARY,
-      fallback: BACKUP,
-      openrouterConfigured: true,
-      hubConfigured: true,
-      togetherConfigured: true,
-      anthropicConfigured: true,
-      nvidiaConfigured: true,
-    });
-    expect(routes.filter((route) => route.via === 'anthropic')).toEqual([
-      { model: anthropicModelsByRole()[role], via: 'anthropic', position: 'cross_provider' },
-    ]);
-    expect(routes.filter((route) => route.via === 'nvidia')).toEqual([
-      { model: nvidiaModelsByRole()[role], via: 'nvidia', position: 'cross_provider' },
-    ]);
-    // Together has its own serverless models for the role, in the listed order.
-    expect(routes.filter((route) => route.via === 'together')).toEqual(
-      TOGETHER_BACKUP_MODELS.map((model) => ({ model, via: 'together', position: 'cross_provider' }))
-    );
-    // OpenRouter and the hub (Hugging Face) still have routes for the role.
-    expect(routes.some((route) => !route.via && route.position === 'cross_provider' && route.model.startsWith('NousResearch/'))).toBe(true);
-    expect(routes.some((route) => !route.via && route.position === 'cross_provider' && route.model.startsWith('nousresearch/'))).toBe(true);
-    expect(routes[0]).toEqual({ model: PRIMARY, position: 'primary' });
-    expect(routes[1]).toEqual({ model: BACKUP, position: 'backup' });
-  });
-
-  it('covers exactly the roles the engine has, no more and no fewer', () => {
-    expect(Object.keys(ROUTE_MODEL_CLASS_BY_ROLE).sort()).toEqual([...REASONING_MODEL_ROLES].sort());
-  });
-
-  it('answers a call for every role on Anthropic when OpenRouter is out of credit', async () => {
-    h.openrouter = () => 402;
-    for (const role of REASONING_MODEL_ROLES) {
-      const result = await call(role);
-      expect(result.routeUsed?.provider, role).toBe('anthropic');
-      expect(result.content, role).toContain('written by claude-');
-    }
-  });
-
-  it('answers a call for every role on NVIDIA when it is the only provider left', async () => {
-    h.openrouter = () => 402;
-    config.anthropic.apiKey = '';
-    config.together.apiKey = '';
-    config.hfToken = '';
-    for (const role of REASONING_MODEL_ROLES) {
-      const result = await call(role);
-      expect(result.routeUsed?.provider, role).toBe('nvidia');
-    }
-  });
-
-  it('uses the model ids set on the server in place of the defaults', () => {
-    const before = { ...config.anthropic.models };
-    config.anthropic.models.strong = 'claude-opus-5-5';
-    try {
-      const routes = modelRoutesForCall({ role: 'synthesizer', primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: false, anthropicConfigured: true });
-      expect(routes.find((route) => route.via === 'anthropic')?.model).toBe('claude-opus-5-5');
-    } finally {
-      config.anthropic.models.strong = before.strong;
-    }
-  });
 });
 
 describe('the order providers are tried in', () => {
-  const slots = (routes: ReturnType<typeof modelRoutesForCall>): string[] => {
-    const out: string[] = [];
-    for (const route of routes) {
-      const slot = route.via ?? (/^[a-z0-9-]+\/[a-z0-9.:-]+$/.test(route.model) ? 'openrouter' : 'together');
-      if (out[out.length - 1] !== slot) out.push(slot);
-    }
-    return out;
+  const everything = {
+    role: 'section_drafter' as const,
+    primary: EVERYWHERE,
+    openrouterConfigured: true,
+    hubConfigured: true,
+    togetherConfigured: true,
+    anthropicConfigured: true,
+    nvidiaConfigured: true,
   };
-  const everything = { role: 'section_drafter' as const, primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: true, togetherConfigured: true, anthropicConfigured: true, nvidiaConfigured: true };
+  const providers = (routes: ReturnType<typeof modelRoutesForCall>): string[] => routes.map((route) => route.via ?? 'openrouter');
 
-  it('is OpenRouter, Anthropic, Together, NVIDIA by default', () => {
+  beforeEach(() => {
+    addTableRow(EVERYWHERE_ROW);
+  });
+
+  it('is OpenRouter, Anthropic, Together, NVIDIA by default, with Hugging Face Inference after Together', () => {
     expect(DEFAULT_MODEL_PROVIDER_ORDER).toEqual(['openrouter', 'anthropic', 'together', 'nvidia']);
     expect(parseModelProviderOrder(undefined).order).toEqual(['openrouter', 'anthropic', 'together', 'nvidia']);
-    // More OpenRouter models come last: the provider that has just refused is not asked again first.
-    expect(slots(modelRoutesForCall(everything))).toEqual(['openrouter', 'anthropic', 'together', 'nvidia', 'openrouter']);
+    expect(providers(modelRoutesForCall(everything))).toEqual(['openrouter', 'anthropic', 'together', 'huggingface_inference', 'nvidia']);
   });
 
   it('reads MODEL_PROVIDER_ORDER, whatever separates the names', () => {
@@ -531,61 +525,71 @@ describe('the order providers are tried in', () => {
     expect(parsed.unknown).toEqual(['antropic']);
   });
 
-  it('changes which provider is tried after the role models', () => {
+  it('changes which provider is tried after the role model', () => {
     const routes = modelRoutesForCall({ ...everything, providerOrder: ['openrouter', 'nvidia', 'together', 'anthropic'] });
-    expect(slots(routes)).toEqual(['openrouter', 'nvidia', 'together', 'anthropic', 'openrouter']);
+    expect(providers(routes)).toEqual(['openrouter', 'nvidia', 'together', 'huggingface_inference', 'anthropic']);
   });
 
-  it('measures the order against the provider the role model is on, when the backup is on another provider', () => {
-    const hubBackup = 'NousResearch/Hermes-3-Llama-3.1-70B';
+  it('puts the providers the setting places ahead before the role model, each with the same model, and never twice', () => {
     const routes = modelRoutesForCall({
       ...everything,
-      fallback: hubBackup,
       providerOrder: ['together', 'anthropic', 'openrouter', 'nvidia'],
       providerOrderSet: true,
     });
-    // Hub models and Anthropic are ahead of OpenRouter in this order, so they come before the role model.
-    const primaryAt = routes.findIndex((route) => route.position === 'primary');
-    expect(routes.slice(0, primaryAt).every((route) => route.position === 'preferred')).toBe(true);
-    expect(slots(routes.slice(0, primaryAt))).toEqual(['together', 'anthropic']);
-    expect(routes[primaryAt + 1]).toEqual({ model: hubBackup, position: 'backup' });
+    expect(routes.map((route) => [route.via ?? 'openrouter', route.position])).toEqual([
+      ['together', 'preferred'],
+      ['huggingface_inference', 'preferred'],
+      ['anthropic', 'preferred'],
+      ['openrouter', 'primary'],
+      ['nvidia', 'cross_provider'],
+    ]);
     expect(new Set(routes.map((route) => `${route.via ?? ''}:${route.model}`)).size).toBe(routes.length);
   });
 
   it('keeps the role model first while the setting is unset, whatever the default order says', () => {
     const routes = modelRoutesForCall({ ...everything, providerOrder: ['anthropic', 'openrouter', 'together', 'nvidia'], providerOrderSet: false });
-    expect(routes[0]).toEqual({ model: PRIMARY, position: 'primary' });
+    expect(routes[0]).toEqual({ model: EVERYWHERE, position: 'primary' });
     expect(routes.some((route) => route.position === 'preferred')).toBe(false);
   });
 
-  it('puts a provider ahead of the role model when the server setting says so, and still falls back to the role model', async () => {
+  it('puts Anthropic ahead of a Claude role model when the server setting says so, and still goes on to the role model', async () => {
     config.modelProviderOrder = ['anthropic', 'openrouter', 'together', 'nvidia'];
     config.modelProviderOrderSet = true;
 
-    const first = await call('section_drafter');
+    const first = await call('section_drafter', CLAUDE);
     expect(providersCalled()).toEqual(['anthropic']);
-    expect(first.routeUsed).toEqual({ model: ANTHROPIC_DEFAULT_MODELS.strong, provider: 'anthropic', position: 'preferred' });
+    expect(first.routeUsed).toEqual({ model: CLAUDE_DIRECT, provider: 'anthropic', position: 'preferred' });
     // Nothing was refused to reach it, so it is not counted as a fallback.
     expect(first.usedFallback).toBe(false);
 
     h.sent.length = 0;
     h.anthropic = () => 529;
-    const second = await call('section_drafter');
+    const second = await call('section_drafter', CLAUDE);
     expect(h.sent.map((request) => [request.provider, request.model])).toEqual([
-      ['anthropic', ANTHROPIC_DEFAULT_MODELS.strong],
-      ['openrouter', PRIMARY],
+      ['anthropic', CLAUDE_DIRECT],
+      ['openrouter', CLAUDE],
     ]);
     expect(second.routeUsed?.position).toBe('primary');
+  });
+
+  it('does not put Anthropic ahead of a role whose model is not Claude, whatever the setting says', async () => {
+    config.modelProviderOrder = ['anthropic', 'openrouter', 'together', 'nvidia'];
+    config.modelProviderOrderSet = true;
+
+    await call('section_drafter', OPEN);
+
+    expect(h.sent.map((request) => [request.provider, request.model])).toEqual([['openrouter', OPEN]]);
   });
 });
 
 describe('a request made with the customer own OpenRouter key', () => {
   it('is never moved onto the server Anthropic or NVIDIA accounts', async () => {
+    addTableRow(EVERYWHERE_ROW);
     h.openrouter = () => 402;
 
-    await expect(call('section_drafter', { byokApiKeyOverride: 'customer-key' })).rejects.toBeInstanceOf(NormalizedModelError);
+    await expect(call('section_drafter', EVERYWHERE, { byokApiKeyOverride: 'customer-key' })).rejects.toBeInstanceOf(NormalizedModelError);
 
-    expect(new Set(providersCalled())).toEqual(new Set(['openrouter']));
+    expect(providersCalled()).toEqual(['openrouter']);
   });
 });
 
@@ -638,12 +642,13 @@ describe('what a customer is told and charged when every provider refused', () =
   ];
 
   async function everyProviderRefuses(): Promise<NormalizedModelError> {
+    addTableRow(EVERYWHERE_ROW);
     h.openrouter = () => ({ status: 402, message: OUT_OF_CREDIT });
     h.anthropic = () => ({ status: 400, message: ANTHROPIC_OUT_OF_CREDIT });
     h.hub = () => 'fail';
     h.together = () => 429;
     h.nvidia = () => 429;
-    return (await call().then(
+    return (await call('section_drafter', EVERYWHERE).then(
       () => null,
       (err: unknown) => err
     )) as NormalizedModelError;
@@ -664,12 +669,13 @@ describe('what a customer is told and charged when every provider refused', () =
       status: transition.nextStatus,
       error_message: details.errorMessage,
       failure_meta: { ...transition.failureMeta, customerMessageId: message.id, customerMessage: message.text },
-      model_log: [{ role: 'section_drafter', model: ANTHROPIC_DEFAULT_MODELS.strong }],
+      model_log: [{ role: 'section_drafter', model: CLAUDE_DIRECT }],
     });
     const text = JSON.stringify(sent, (key, value: unknown) => (key === 'status' || key === 'customerMessageId' ? undefined : value));
 
     for (const pattern of NOT_FOR_CUSTOMERS) expect(text).not.toMatch(pattern);
     expect(text).toContain(message.text);
+    expect(message.text).toMatch(/AI service is temporarily unavailable/);
     expect(message.text).toMatch(/You have not been charged/);
   });
 
