@@ -19,10 +19,10 @@
  * Cost. Every probe is a real model request on the server's own provider
  * account, billed by that provider: a one-line prompt and an answer of at most
  * 5 tokens. One per distinct route, on every process start, automatically.
- * With the presets of 13 Oct 2026 that is 5 OpenRouter requests, plus 5
- * Hugging Face Inference requests when `HF_TOKEN` is set (10 at most). A
- * route with no host (Hermes 4 70B on OpenRouter) is refused before any model
- * runs. Set `OPENROUTER_PREFLIGHT=false` (also `0` or `no`) to turn it off; the
+ * With the presets after the model change of 13 Oct 2026 (four distinct
+ * models) that is 4 OpenRouter requests, plus 4 Hugging Face Inference
+ * requests when `HF_TOKEN` is set (8 at most). A route with no host is
+ * refused before any model runs. Set `OPENROUTER_PREFLIGHT=false` (also `0` or `no`) to turn it off; the
  * name is kept from when it only asked OpenRouter, so existing settings keep
  * working. Turning it off does not turn off the run readiness check
  * (`modelRouteReadiness.ts`), which probes a route itself, the same way, when

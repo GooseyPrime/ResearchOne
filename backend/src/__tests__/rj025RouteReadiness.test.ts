@@ -181,7 +181,8 @@ describe('every route of a stage is the exact model it chose, on any provider th
     expect(byRole.planner).toEqual([['openrouter', KIMI], ['huggingface_inference', KIMI_HUB]]);
     expect(byRole.reasoner).toEqual([['openrouter', QWEN], ['huggingface_inference', QWEN_HUB]]);
     expect(byRole.verifier).toEqual([['openrouter', V32], ['huggingface_inference', V32_HUB]]);
-    expect(byRole.double_check).toEqual([['openrouter', HERMES4], ['huggingface_inference', HERMES4_HUB]]);
+    // Double-check moved to Kimi K2 Thinking on 13 Oct 2026: OpenRouter first, then the same model on Hugging Face.
+    expect(byRole.double_check).toEqual([['openrouter', KIMI], ['huggingface_inference', KIMI_HUB]]);
   });
 
   it('never probes Anthropic, Together or NVIDIA for a model they do not serve, though each has a key', async () => {
@@ -273,26 +274,37 @@ describe('a key alone is not proof a route can answer', () => {
   });
 });
 
-describe('a stage whose model only one provider serves (Hermes 4 70B)', () => {
-  it('is not ready when Hugging Face, its only confirmed host, is out of credit, and no other model is probed', async () => {
-    h.answers.openrouter = (model) => (model === HERMES4 ? { status: 404, message: `No endpoints found for ${HERMES4}.` } : 'ok');
-    h.answers.huggingface_inference = (model) => (model === HERMES4_HUB ? 402 : 'ok');
-    await expect(assertRunModelRoutesReady(research)).rejects.toBeInstanceOf(ModelRoutesUnavailableError);
-    const asked = h.sent.filter((sent) => /hermes/i.test(sent.model)).map((sent) => [sent.provider, sent.model]);
-    expect(asked).toEqual([['openrouter', HERMES4], ['huggingface_inference', HERMES4_HUB]]);
-    // Only the stages' own models were ever asked: nothing in place of Hermes.
-    const ownModels = new Set([KIMI, KIMI_HUB, QWEN, QWEN_HUB, V32, V32_HUB, HERMES4, HERMES4_HUB]);
+describe('Double-check on Kimi K2 Thinking (13 Oct 2026): OpenRouter first, Hugging Face as the same-model backup', () => {
+  it('is ready through OpenRouter while the Hugging Face account is empty, and no other model is probed', async () => {
+    h.answers.huggingface_inference = () => 402;
+    const readiness = await checkRunModelReadiness(research);
+    expect(readiness.ready).toBe(true);
+    const doubleCheck = readiness.stages.find((stage) => stage.role === 'double_check');
+    expect(doubleCheck?.routes).toEqual([
+      { provider: 'openrouter', model: KIMI, state: 'usable' },
+      { provider: 'huggingface_inference', model: KIMI_HUB, state: 'not_usable', reason: 'quota_exceeded' },
+    ]);
+    // Only the stages' own models were ever asked: nothing in their place.
+    const ownModels = new Set([KIMI, KIMI_HUB, QWEN, QWEN_HUB, V32, V32_HUB]);
     for (const sent of h.sent) expect(ownModels.has(sent.model)).toBe(true);
   });
 
-  it('is not ready with no Hugging Face token at all', async () => {
+  it('is ready with no Hugging Face token at all', async () => {
     config.hfToken = '';
-    h.answers.openrouter = (model) => (model === HERMES4 ? { status: 404, message: `No endpoints found for ${HERMES4}.` } : 'ok');
     const readiness = await checkRunModelReadiness(research);
-    expect(readiness.unavailable.map((stage) => stage.role)).toEqual(['double_check']);
-    expect(readiness.unavailable[0].routes).toEqual([
-      { provider: 'openrouter', model: HERMES4, state: 'not_usable', reason: 'provider_unavailable' },
+    expect(readiness.ready).toBe(true);
+    expect(readiness.stages.find((stage) => stage.role === 'double_check')?.routes).toEqual([
+      { provider: 'openrouter', model: KIMI, state: 'usable' },
     ]);
+  });
+
+  it('stops before any work only when both OpenRouter and Hugging Face refuse the same model', async () => {
+    h.answers.openrouter = (model) => (model === KIMI ? 402 : 'ok');
+    h.answers.huggingface_inference = (model) => (model === KIMI_HUB ? 402 : 'ok');
+    const err = await assertRunModelRoutesReady(research).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ModelRoutesUnavailableError);
+    const stages = (err as ModelRoutesUnavailableError).failureMeta.unavailableStages as Array<{ role: string }>;
+    expect(stages.map((stage) => stage.role).sort()).toEqual(['double_check', 'planner']);
   });
 });
 
@@ -324,9 +336,11 @@ describe('a run with the caller own OpenRouter key', () => {
     const verifier = readiness.stages.find((stage) => stage.role === 'verifier');
     expect(verifier?.routes).toEqual([{ provider: 'openrouter', model: V32, state: 'unverified', reason: 'key_accepted_and_model_listed' }]);
     expect(verifier).toMatchObject({ usable: true, verified: false });
-    // Hermes 4 70B has no OpenRouter host, so Double-check cannot start on such a key.
-    expect(readiness.unavailable.map((stage) => stage.role)).toEqual(['double_check']);
-    expect(readiness.unavailable[0].routes).toEqual([{ provider: 'openrouter', model: HERMES4, state: 'not_usable', reason: 'endpoint_not_found' }]);
+    // Double-check uses Kimi K2 Thinking, which OpenRouter lists, so every stage may start.
+    expect(readiness.unavailable).toEqual([]);
+    expect(readiness.stages.find((stage) => stage.role === 'double_check')?.routes).toEqual([
+      { provider: 'openrouter', model: KIMI, state: 'unverified', reason: 'key_accepted_and_model_listed' },
+    ]);
   });
 
   it('checks an id the provider table does not know against the catalog, instead of trusting it', async () => {
