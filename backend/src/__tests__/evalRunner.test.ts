@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { flagForRun, flagValueForRun, UnknownFlagError } from '../services/eval/flagOverride';
 import { fixtureFiles, runHarness, type EvalTransport } from '../services/eval/runHarness';
 import { summarizeScores } from '../services/eval/taskSet';
-import { QUOTE_SUPPORTS_FALLBACK, QUOTE_SUPPORTS_MODEL, QUOTE_SUPPORTS_PROMPT } from '../services/eval/quoteSupportsPrompt';
+import { QUOTE_SUPPORTS_MODEL, QUOTE_SUPPORTS_PROMPT } from '../services/eval/quoteSupportsPrompt';
 import type { EvalTask } from '../services/eval/taskSet';
 
 vi.mock('../db/pool', () => ({
@@ -55,7 +55,9 @@ describe('harness runner', () => {
         passedOverrides = overrides;
         return { runId: 'run-1' };
       },
-      async wait() {},
+      async wait() {
+        return undefined;
+      },
       async load() {
         return {
           reportMarkdown: 'The accounts disagree [E1]. never invoiced',
@@ -103,7 +105,7 @@ describe('quote supports judge', () => {
     expect(call).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([{ role: 'system', content: QUOTE_SUPPORTS_PROMPT }]),
-        runtimeOverrides: { primary: QUOTE_SUPPORTS_MODEL, fallback: QUOTE_SUPPORTS_FALLBACK },
+        runtimeOverrides: { primary: QUOTE_SUPPORTS_MODEL },
       })
     );
   });

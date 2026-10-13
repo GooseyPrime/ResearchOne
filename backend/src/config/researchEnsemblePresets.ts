@@ -354,9 +354,9 @@ function v2Mode(
  *   - **Strongest-form**: same reasoner-class ladder as `reasoner` / `change_planner`
  *     (Qwen3 Thinking → DeepSeek R1-0528).
  *
- * Preset fallbacks fire unconditionally on primary failure.
- * `allowFallbackForRole` only controls whether a user runtime-override
- * fallback (set in the V2 UI) can replace the preset fallback.
+ * A preset's `fallback` is kept as a record of the second choice for each
+ * role and stays on the allowlist, so it can be chosen as a role's model for
+ * one run. It is never called in place of the primary (RJ-025).
  */
 export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRole, RoleModelPair>> = {
   GENERAL_EPISTEMIC_RESEARCH: v2Mode({
@@ -474,22 +474,17 @@ export function validateV2ModePresetsAgainstAllowlist(): void {
 
 /**
  * Per-run UI overrides win over preset primary when non-empty.
- * Preset fallback always fires. `allowFallbackForRole` only controls whether
- * a user-supplied runtime override fallback (set from the V2 UI) replaces it.
+ *
+ * Only the primary is resolved. A preset's `fallback` is a different model and
+ * is never called in its place (RJ-025): when the chosen model's provider
+ * refuses, the same model is asked on another provider that serves it.
  */
 export function mergePresetWithRuntimeOverride(
-  preset: { primary: string; fallback?: string },
-  runtime: { primary?: string; fallback?: string } | undefined,
-  allowFallbackForRole: boolean
-): { primary: string; fallback?: string } {
+  preset: { primary: string },
+  runtime: { primary?: string } | undefined
+): { primary: string } {
   const p = runtime?.primary?.trim();
-  // Runtime override fallback only applies when the user has opted in.
-  // The preset fallback is always the base — it fires unconditionally.
-  const f = allowFallbackForRole ? runtime?.fallback?.trim() : undefined;
-  return {
-    primary: p || preset.primary,
-    fallback: f !== undefined && f !== '' ? f : preset.fallback,
-  };
+  return { primary: p || preset.primary };
 }
 
 export function resolveReasoningModels(args: {
@@ -497,24 +492,11 @@ export function resolveReasoningModels(args: {
   researchObjective?: ResearchObjective | null;
   role: ReasoningModelRole;
   callPurpose?: ModelCallPurpose;
-  /**
-   * @deprecated Has no effect on the preset fallback — preset fallbacks
-   * always fire unconditionally on primary failure. This flag is kept for
-   * API compatibility and is forwarded to `mergePresetWithRuntimeOverride`
-   * where it gates whether a *user-supplied runtime override* fallback
-   * (set from the V2 UI) can replace the preset fallback.
-   */
-  allowFallbackForRole?: boolean | null;
 }): { primary: string; fallback?: string } | null {
   if (!args.engineVersion || args.engineVersion.trim() !== 'v2') return null;
 
   const obj = args.researchObjective ?? 'GENERAL_EPISTEMIC_RESEARCH';
   const { role } = args;
-  // Preset fallbacks always fire. The flag is only meaningful in
-  // mergePresetWithRuntimeOverride where it gates user runtime-override
-  // fallback replacement.
-  void args.allowFallbackForRole;
-
   const presetForObjective = V2_MODE_PRESETS[obj] ?? V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH;
   const presetForRole = presetForObjective[role];
 

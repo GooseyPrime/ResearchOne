@@ -66,9 +66,9 @@ import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError }
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
 import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective, isHfRepoModel } from './reasoningModelPolicy';
-import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 import { consumeHold, releaseHold } from '../billing/walletReservations';
+import { assertRunModelRoutesReady } from '../openrouter/modelRouteReadiness';
 import { runChargeDecision } from '../billing/runChargeDecision';
 import { incrementReportCount } from '../tier/tierService';
 import { resolveSourceIngestBudget } from '../discovery/sourceBudget';
@@ -310,13 +310,13 @@ interface ReaderFrontMatter {
 function runtimeOverrideForRole(
   overrides: PerRunModelOverrides,
   role: keyof typeof APPROVED_REASONING_MODEL_ALLOWLIST
-): { primary?: string; fallback?: string } | undefined {
+): { primary?: string } | undefined {
   const entry = overrides.overrides?.[role];
   if (!entry) return undefined;
   const primary = entry.primary?.trim() || undefined;
-  const fallback = entry.fallback?.trim() || undefined;
-  if (!primary && !fallback) return undefined;
-  return { primary, fallback };
+  if (!primary) return undefined;
+  // Only the role's model. A backup model saved on an old run is not read (RJ-025).
+  return { primary };
 }
 
 function snapshotModelEnsemble(overrides: PerRunModelOverrides): Record<string, unknown> {
@@ -324,11 +324,8 @@ function snapshotModelEnsemble(overrides: PerRunModelOverrides): Record<string, 
   const out: Record<string, unknown> = {};
   for (const role of roles) {
     const o = overrides.overrides?.[role];
-    out[role] = {
-      primary_override: o?.primary ?? null,
-      fallback_override: o?.fallback ?? null,
-      fallback_enabled: o?.fallbackEnabled === true,
-    };
+    // One model per role; there is no backup model to record (RJ-025).
+    out[role] = { primary_override: o?.primary ?? null };
   }
   return out;
 }
@@ -734,13 +731,11 @@ async function appendRunProgressEvent(runId: string, event: Record<string, unkno
 
 function v2CallOpts(
   engineVersion: string | undefined,
-  researchObjective: ResearchObjective | undefined,
-  allowFallbackByRole: Record<string, boolean>
+  researchObjective: ResearchObjective | undefined
 ) {
   return {
     engineVersion: engineVersion ?? undefined,
     researchObjective: researchObjective ?? undefined,
-    allowFallbackByRole,
   };
 }
 
@@ -905,8 +900,7 @@ async function runResearchJobInner(
   }
 
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
-  const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
-  const v2Base = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
+  const v2Base = v2CallOpts(engineVersion, researchObjective);
   const creditCtx = data.creditChargeContext;
 
   // BYOK: if user is on BYOK tier, all OpenRouter calls use their key.
@@ -1091,6 +1085,17 @@ async function runResearchJobInner(
   });
 
   try {
+    // Before any work: every stage the run cannot finish without must have a
+    // route that can answer for its exact model (RJ-025). A key alone is not
+    // proof; see `modelRouteReadiness.ts`. A run that cannot finish stops
+    // here, before any model call, and is not charged.
+    await assertRunModelRoutesReady({
+      engineVersion,
+      researchObjective,
+      runtimeOverrideFor: (role) => runtimeOverrideForRole(runModelOverrides, role),
+      byok: Boolean(byokApiKeyOverride),
+    });
+
     // ────────────────────────────────────────────────────────────────
     // the plan-confirmation pass — Stage 0.5: intent classification + user-facing plan gate
     // (skipped on resume-after-confirm; `skipPlanConfirmationGate` is set
@@ -1105,7 +1110,6 @@ async function runResearchJobInner(
         const intentResult = await classifyIntent(researchQuery, supplemental, {
           engineVersion: engineVersion ?? undefined,
           researchObjective: researchObjective ?? undefined,
-          allowFallbackByRole,
           byokApiKeyOverride,
         });
         if (data.requestedFormats && data.requestedFormats.length > 0) {
@@ -1122,7 +1126,6 @@ async function runResearchJobInner(
           llmOpts: {
             engineVersion: engineVersion ?? undefined,
             researchObjective: researchObjective ?? undefined,
-            allowFallbackByRole,
             byokApiKeyOverride,
           },
         });
@@ -1272,7 +1275,7 @@ async function runResearchJobInner(
     const runRelevance: RunRelevanceScope = {
       runId,
       researchQuery,
-      model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
+      model: { engineVersion, researchObjective, byokApiKeyOverride },
       onChecked: async (report) => {
         await progress(currentStage, currentPercent, retrievalCheckMessage(report), {
           substep: report.decidedWithoutModel > 0 ? 'relevance_check_without_model' : 'relevance_check',
@@ -1291,7 +1294,6 @@ async function runResearchJobInner(
         filterTags,
         engineVersion,
         researchObjective,
-        allowFallbackByRole,
         byokApiKeyOverride,
         userId: creditCtx?.userId,
         specialistAgentIds,
@@ -1680,7 +1682,6 @@ async function runResearchJobInner(
           researchBrief: confirmedResearchBrief,
           engineVersion: v2.engineVersion,
           researchObjective: v2.researchObjective,
-          allowFallbackByRole: v2.allowFallbackByRole,
           byokApiKeyOverride,
           // Chunk ids that actually survived the shared-context cap so scoped
           // retrieval does not re-deduplicate chunks that were truncated away.
@@ -1867,7 +1868,6 @@ async function runResearchJobInner(
         filterTags,
         engineVersion,
         researchObjective,
-        allowFallbackByRole,
         byokApiKeyOverride,
         userId: creditCtx?.userId,
         specialistAgentIds,
@@ -2018,7 +2018,6 @@ async function runResearchJobInner(
           plan,
           material: digestOf(),
           engineVersion,
-          allowFallbackByRole,
           byokApiKeyOverride,
         });
       const decide = async (judged: Awaited<ReturnType<typeof judgeRetrievedMaterial>>, extraPassUsed: boolean) => {
@@ -2049,7 +2048,6 @@ async function runResearchJobInner(
           filterTags,
           engineVersion,
           researchObjective,
-          allowFallbackByRole,
           byokApiKeyOverride,
           userId: creditCtx?.userId,
           specialistAgentIds,
@@ -2433,7 +2431,6 @@ async function runResearchJobInner(
         contractArtifacts: confirmedResearchBrief?.requestedArtifacts,
         engineVersion: v2.engineVersion,
         researchObjective: v2.researchObjective,
-        allowFallbackByRole: v2.allowFallbackByRole,
         byokApiKeyOverride,
         requestedFormats: confirmedResearchBrief?.requestedFormats ?? data.requestedFormats,
         ...synthesisLengthArgs(lengthDecision),
@@ -2980,7 +2977,6 @@ ${reportForGates(generatedReport.markdown)}`,
         challengeNotes: doubleCheckResult.content,
         engineVersion: v2.engineVersion,
         researchObjective: v2.researchObjective,
-        allowFallbackByRole: v2.allowFallbackByRole,
         byokApiKeyOverride,
       });
       modelLog.push(...challengePass.modelCalls);

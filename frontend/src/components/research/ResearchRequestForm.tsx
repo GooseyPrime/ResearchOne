@@ -4,15 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   ChevronDown,
   ChevronUp,
-  CheckSquare,
   FlaskConical,
   Loader2,
   RotateCcw,
   Send,
   Settings2,
-  Square,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { modelOverridesForRequest, modelRowsFromStoredOverrides, type RoleModelChoice } from '../../utils/modelOverrides';
 import AttachmentDropZone from './AttachmentDropZone';
 import ChallengePerspectiveSelector from './ChallengePerspectiveSelector';
 import ResearchClarificationChat from './ResearchClarificationChat';
@@ -55,7 +54,9 @@ import { customerOptionHelp, customerOptionsIn } from '@/content/customerOptions
 /** The form's own fields, named and described from the registry of customer-facing names. */
 const FIELD = Object.fromEntries(customerOptionsIn('request_field').map((option) => [option.id, option]));
 
-type ModelRow = { primary?: string; fallback?: string; fallbackEnabled?: boolean };
+/** One model per role; there is no backup model (RJ-025). */
+type ModelRow = RoleModelChoice;
+
 type ObjectiveChoice = 'AUTO' | ResearchObjective;
 
 /** The objective whose model line-up we show while the choice is still automatic. */
@@ -233,10 +234,9 @@ export default function ResearchRequestForm() {
       setReportLengthCustom(2200);
     }
 
-    const overrides = run.model_overrides as Record<string, ModelRow> | undefined;
-    const hasOverrides =
-      Boolean(overrides) && typeof overrides === 'object' && Object.keys(overrides!).length > 0;
-    setModelRows(hasOverrides ? overrides! : {});
+    const overrides = modelRowsFromStoredOverrides(run.model_overrides);
+    const hasOverrides = Object.keys(overrides).length > 0;
+    setModelRows(overrides);
     setModelsOpen(hasOverrides);
     // Anything the user had opened, they will want open again.
     setSourcesOpen(Boolean(body.trim()) || slice.supplementalUrlLines.length > 0 || Boolean(slice.filterTags));
@@ -259,19 +259,7 @@ export default function ResearchRequestForm() {
   // planner decides length from the request like everything else.
   const targetWordCount = resolveTargetWordCount(reportLengthPreset, reportLengthCustom);
 
-  const modelOverrides = useMemo(() => {
-    const out: Record<string, { primary?: string; fallback?: string }> = {};
-    for (const [role, row] of Object.entries(modelRows)) {
-      const primary = row.primary?.trim();
-      const fallback = row.fallbackEnabled ? row.fallback?.trim() : undefined;
-      if (!primary && !fallback) continue;
-      out[role] = {
-        ...(primary ? { primary } : {}),
-        ...(fallback ? { fallback } : {}),
-      };
-    }
-    return Object.keys(out).length > 0 ? out : undefined;
-  }, [modelRows]);
+  const modelOverrides = useMemo(() => modelOverridesForRequest(modelRows), [modelRows]);
 
   const mutation = useMutation({
     mutationFn: (opts: { includeClarifications: boolean }) => {
@@ -496,52 +484,10 @@ export default function ResearchRequestForm() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-slate-400">
                 {objective === 'AUTO'
-                  ? 'Defaults while the objective is chosen automatically. Edits apply to this run only.'
-                  : 'Defaults for the objective you chose. Edits apply to this run only.'}
+                  ? 'Defaults while the objective is chosen automatically. Edits apply to this run only. Each step uses only the model shown; no other model stands in for it.'
+                  : 'Defaults for the objective you chose. Edits apply to this run only. Each step uses only the model shown; no other model stands in for it.'}
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className="btn-ghost text-xs flex items-center gap-1 border border-accent/30 text-accent px-2 py-1 rounded-lg"
-                  disabled={busy}
-                  title="Allow a second model to take over for every role if the first one fails."
-                  onClick={() => {
-                    setModelRows((prev) => {
-                      const next: Record<string, ModelRow> = { ...prev };
-                      for (const role of Object.keys(presetForObjective)) {
-                        const p = presetForObjective[role];
-                        next[role] = {
-                          ...next[role],
-                          primary: next[role]?.primary ?? p.primary,
-                          fallback: next[role]?.fallback?.trim() ? next[role].fallback : p.fallback,
-                          fallbackEnabled: true,
-                        };
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <CheckSquare size={14} />
-                  Allow all backups
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs flex items-center gap-1"
-                  disabled={busy}
-                  title="Turn the backup model off for every role."
-                  onClick={() => {
-                    setModelRows((prev) => {
-                      const next: Record<string, ModelRow> = {};
-                      for (const role of Object.keys(prev)) {
-                        next[role] = { ...prev[role], fallbackEnabled: false };
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <Square size={14} />
-                  Clear all
-                </button>
                 <button
                   type="button"
                   className="btn-ghost text-xs flex items-center gap-1"
@@ -550,7 +496,7 @@ export default function ResearchRequestForm() {
                     const rows: Record<string, ModelRow> = {};
                     for (const role of Object.keys(presetForObjective)) {
                       const p = presetForObjective[role];
-                      rows[role] = { primary: p.primary, fallback: p.fallback, fallbackEnabled: false };
+                      rows[role] = { primary: p.primary };
                     }
                     setModelRows(rows);
                   }}
@@ -568,7 +514,7 @@ export default function ResearchRequestForm() {
                   </div>
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">
-                      First choice
+                      Model
                     </div>
                     <input
                       className="input text-xs w-full"
@@ -582,46 +528,6 @@ export default function ResearchRequestForm() {
                       }
                       disabled={busy}
                     />
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5" title={customerOptionHelp(FIELD.backup_model)}>
-                      {FIELD.backup_model.name}
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        className="mt-1.5 rounded border-indigo-900/40 bg-surface-200 flex-shrink-0"
-                        id={`fb-${role}`}
-                        checked={modelRows[role]?.fallbackEnabled === true}
-                        onChange={(e) =>
-                          setModelRows((prev) => ({
-                            ...prev,
-                            [role]: { ...prev[role], fallbackEnabled: e.target.checked },
-                          }))
-                        }
-                        disabled={busy}
-                      />
-                      <div className="flex-1 min-w-0 space-y-0.5">
-                        <label
-                          htmlFor={`fb-${role}`}
-                          className="text-[10px] text-slate-500 cursor-pointer block"
-                        >
-                          Use the backup if the first one fails
-                        </label>
-                        <input
-                          className="input text-xs w-full"
-                          placeholder={presetForObjective[role]?.fallback ?? 'backup model id'}
-                          value={modelRows[role]?.fallback ?? ''}
-                          onChange={(e) =>
-                            setModelRows((prev) => ({
-                              ...prev,
-                              [role]: { ...prev[role], fallback: e.target.value },
-                            }))
-                          }
-                          disabled={busy}
-                        />
-                      </div>
-                    </div>
                   </div>
                 </div>
               ))}

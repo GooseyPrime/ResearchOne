@@ -16,7 +16,6 @@ export async function refinePlan(input: {
   llmOpts: {
     engineVersion?: string;
     researchObjective?: import('../reasoning/reasoningModelPolicy').ResearchObjective;
-    allowFallbackByRole: Record<string, boolean>;
     byokApiKeyOverride?: string;
   };
 }): Promise<{
@@ -41,7 +40,6 @@ export async function refinePlan(input: {
     role: 'planner',
     engineVersion: input.llmOpts.engineVersion,
     researchObjective: input.llmOpts.researchObjective,
-    allowFallbackByRole: input.llmOpts.allowFallbackByRole,
     callPurpose: 'wave5_plan_refinement',
     runtimeOverrides: { primary: config.models.planning },
     byokApiKeyOverride: input.llmOpts.byokApiKeyOverride,

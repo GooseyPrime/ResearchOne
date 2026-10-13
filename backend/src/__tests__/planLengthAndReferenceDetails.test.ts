@@ -34,7 +34,7 @@ function refineTo(intent: string, estimatedLength: { minWords: number; maxWords:
       intentChange: { detected: true, from: 'reference_lookup', to: intent, rationale: 'asked' },
     }),
   });
-  return refinePlan({ currentPlan: plan, refinementInstruction: 'Make this a factual report', query: 'What year?', llmOpts: { allowFallbackByRole: {} } });
+  return refinePlan({ currentPlan: plan, refinementInstruction: 'Make this a factual report', query: 'What year?', llmOpts: {} });
 }
 
 const systemPromptSent = (): string => (mocks.callRoleModel.mock.calls[0][0] as { messages: Array<{ role: string; content: string }> }).messages[0].content;

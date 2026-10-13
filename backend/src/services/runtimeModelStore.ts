@@ -11,7 +11,32 @@ const APPROVED_EMBEDDING_MODELS = new Set([
   'openai/text-embedding-ada-002',
 ]);
 
-export type ModelOverrideEntry = { primary?: string; fallback?: string; fallbackEnabled?: boolean };
+/**
+ * A role's model choice: one model. There is no backup model (RJ-025): a
+ * different model is never used in place of the one chosen. When the chosen
+ * model's provider refuses, the same model is asked on another provider that
+ * serves it (`providerRoutes.ts`).
+ */
+export type ModelOverrideEntry = { primary?: string };
+
+/**
+ * Fields that once chose a backup model. A request that sends one is refused
+ * with a plain reason rather than accepted and ignored (RJ-025 repair).
+ */
+export const OBSOLETE_BACKUP_MODEL_FIELDS = ['fallback', 'fallbackEnabled'] as const;
+
+export const OBSOLETE_BACKUP_MODEL_MESSAGE =
+  'Backup models are no longer supported: a step always uses the model chosen for it. If that model\'s provider refuses, the same model is asked on another provider that serves it. Remove "fallback" and "fallbackEnabled" from the request.';
+
+/** Thrown for a request that names a backup model. Routes answer it with 400. */
+export class ObsoleteBackupModelInputError extends Error {
+  readonly status = 400;
+  readonly code = 'obsolete_backup_model_input';
+  constructor(readonly role: string, readonly field: string) {
+    super(`${OBSOLETE_BACKUP_MODEL_MESSAGE} (role "${role}", field "${field}")`);
+    this.name = 'ObsoleteBackupModelInputError';
+  }
+}
 
 export type RuntimeOverridesPayload = {
   overrides: Record<string, ModelOverrideEntry>;
@@ -43,19 +68,16 @@ export async function refreshRuntimeModelOverrides(): Promise<void> {
       continue;
     }
     if (v && typeof v === 'object' && !Array.isArray(v)) {
-      const e = v as { primary?: string; fallback?: string; fallbackEnabled?: unknown };
-      overrides[k] = {
-        primary: typeof e.primary === 'string' ? e.primary : undefined,
-        fallback: typeof e.fallback === 'string' ? e.fallback : undefined,
-        fallbackEnabled: e.fallbackEnabled === true ? true : undefined,
-      };
+      // A backup model saved before RJ-025 is not loaded: no call uses one.
+      const e = v as { primary?: string };
+      overrides[k] = { primary: typeof e.primary === 'string' ? e.primary : undefined };
     }
   }
   cached = { overrides, embedding };
   logger.info('Runtime model overrides refreshed from database');
 }
 
-function assertModelAllowed(role: string, model: string, kind: 'primary' | 'fallback'): void {
+function assertModelAllowed(role: string, model: string, kind: 'primary'): void {
   const r = role as ReasoningModelRole;
   const allowed = APPROVED_REASONING_MODEL_ALLOWLIST[r];
   if (!allowed) {
@@ -79,10 +101,7 @@ export function validatePerRunModelOverrides(body: unknown): PerRunModelOverride
 
 export function resolveRoleModelsForRun(role: ModelRole): ModelOverrideEntry {
   const o = cached.overrides[role];
-  return {
-    primary: o?.primary?.trim() || undefined,
-    fallback: o?.fallback?.trim() || undefined,
-  };
+  return { primary: o?.primary?.trim() || undefined };
 }
 
 export function validateAndNormalizePayload(body: unknown): RuntimeOverridesPayload {
@@ -112,13 +131,13 @@ export function validateAndNormalizePayload(body: unknown): RuntimeOverridesPayl
     if (typeof val !== 'object' || Array.isArray(val)) {
       throw new Error(`Invalid value for role "${key}"`);
     }
-    const entry = val as { primary?: unknown; fallback?: unknown; fallbackEnabled?: unknown };
+    const entry = val as Record<string, unknown>;
+    for (const field of OBSOLETE_BACKUP_MODEL_FIELDS) {
+      if (entry[field] !== undefined && entry[field] !== null) throw new ObsoleteBackupModelInputError(key, field);
+    }
     const primary = typeof entry.primary === 'string' ? entry.primary.trim() : undefined;
-    const fb = typeof entry.fallback === 'string' ? entry.fallback.trim() : undefined;
-    const fallbackEnabled = entry.fallbackEnabled === true ? true : undefined;
     if (primary) assertModelAllowed(key, primary, 'primary');
-    if (fb) assertModelAllowed(key, fb, 'fallback');
-    overrides[key] = { primary, fallback: fb, fallbackEnabled };
+    overrides[key] = { primary };
   }
 
   return { overrides, embedding };
@@ -142,12 +161,6 @@ export async function saveRuntimeModelOverrides(payload: RuntimeOverridesPayload
 export function effectivePrimary(role: ModelRole, envDefault: string): string {
   const o = cached.overrides[role];
   return (o?.primary && o.primary.trim()) || envDefault;
-}
-
-/** Resolve fallback model for a reasoning role. */
-export function effectiveFallback(role: ModelRole, envDefault: string): string {
-  const o = cached.overrides[role];
-  return (o?.fallback && o.fallback.trim()) || envDefault;
 }
 
 export function effectiveEmbedding(envDefault: string): string {

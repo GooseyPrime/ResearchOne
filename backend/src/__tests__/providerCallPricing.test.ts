@@ -12,7 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as poolMod from '../db/pool';
 import { emitCallTelemetry, runScope } from '../services/telemetry';
-import { _resetPricingCache, computeCostUsd, getCallPrice } from '../services/telemetry/pricingCatalog';
+import { _resetPricingCache, computeCostUsd, getCallPrice, getCallPricing } from '../services/telemetry/pricingCatalog';
 import {
   SAME_MODEL_PROVIDER_TABLE,
   anthropicListPrice,
@@ -131,12 +131,13 @@ describe('the price a call is costed at', () => {
     expect(gateway).toEqual({ inputPricePer1mUsd: 0.05, outputPricePer1mUsd: 0.2 });
   });
 
-  it('is unchanged for OpenRouter and Hugging Face calls: the row for the model id', async () => {
+  it('costs OpenRouter and Hugging Face calls from the row for the model id when no provider-keyed row exists', async () => {
     const lookedUp = pricingTable({ 'deepseek/deepseek-v3.2': [0.27, 0.4] });
     for (const provider of ['openrouter', 'huggingface_inference', undefined]) {
       expect(await getCallPrice({ model: 'deepseek/deepseek-v3.2', provider })).toEqual({ inputPricePer1mUsd: 0.27, outputPricePer1mUsd: 0.4 });
     }
-    expect(new Set(lookedUp)).toEqual(new Set(['deepseek/deepseek-v3.2']));
+    // A Hugging Face call first looks for a row keyed by its provider.
+    expect(new Set(lookedUp)).toEqual(new Set(['deepseek/deepseek-v3.2', 'huggingface_inference:deepseek/deepseek-v3.2']));
   });
 });
 
@@ -272,18 +273,21 @@ describe('prices are keyed by provider and model (RJ-025)', () => {
 
   it('costs a same-model Hugging Face call from the row keyed huggingface_inference:<hub id> when there is one', async () => {
     pricingTable({ 'huggingface_inference:deepseek-ai/DeepSeek-V3.2': [0.26, 0.38], 'deepseek/deepseek-v3.2': [0.27, 0.4] });
-    const price = await getCallPrice({ model: 'deepseek-ai/DeepSeek-V3.2', provider: 'huggingface_inference', sameModelAs: 'deepseek/deepseek-v3.2' });
-    expect(price).toEqual({ inputPricePer1mUsd: 0.26, outputPricePer1mUsd: 0.38 });
+    const pricing = await getCallPricing({ model: 'deepseek-ai/DeepSeek-V3.2', provider: 'huggingface_inference' });
+    expect(pricing).toEqual({ price: { inputPricePer1mUsd: 0.26, outputPricePer1mUsd: 0.38 }, known: true });
   });
 
-  it('otherwise costs it at the price of the role own id for the same model, so the call is not recorded as free', async () => {
+  it('keeps the price of a Hugging Face call unknown when no Hugging Face row exists, and never borrows the OpenRouter price of the same model', async () => {
     const lookedUp = pricingTable({ 'deepseek/deepseek-v3.2': [0.27, 0.4] });
-    const price = await getCallPrice({ model: 'deepseek-ai/DeepSeek-V3.2', provider: 'huggingface_inference', sameModelAs: 'deepseek/deepseek-v3.2' });
-    expect(price).toEqual({ inputPricePer1mUsd: 0.27, outputPricePer1mUsd: 0.4 });
-    expect(lookedUp).toEqual(['huggingface_inference:deepseek-ai/DeepSeek-V3.2', 'deepseek-ai/DeepSeek-V3.2', 'deepseek/deepseek-v3.2']);
+    const pricing = await getCallPricing({ model: 'deepseek-ai/DeepSeek-V3.2', provider: 'huggingface_inference' });
+    expect(pricing.known).toBe(false);
+    expect(pricing.price).toEqual({ inputPricePer1mUsd: 0, outputPricePer1mUsd: 0 });
+    // Only Hugging Face keys were read: the OpenRouter id was never looked up.
+    expect(lookedUp).toEqual(['huggingface_inference:deepseek-ai/DeepSeek-V3.2', 'deepseek-ai/DeepSeek-V3.2']);
+    expect(lookedUp).not.toContain('deepseek/deepseek-v3.2');
   });
 
-  it('writes the cost row of a same-model Hugging Face call with that price and the provider that answered', async () => {
+  it('writes the cost row of a Hugging Face call with no known price as unknown, not at another provider price', async () => {
     pricingTable({ 'deepseek/deepseek-v3.2': [0.27, 0.4] });
     const params = await runScope.run({ runId: null }, () =>
       insertedRow(
@@ -296,8 +300,25 @@ describe('prices are keyed by provider and model (RJ-025)', () => {
     );
 
     expect(params[7]).toBe('deepseek-ai/DeepSeek-V3.2');
+    expect(params[15]).toBe(0);
+    expect(params[16]).toBe(0);
+    const metadata = JSON.parse(String(params[19]));
+    expect(metadata.provider).toBe('huggingface_inference');
+    expect(metadata.price_known).toBe(false);
+  });
+
+  it('does not mark a call whose price is known', async () => {
+    pricingTable({ 'deepseek/deepseek-v3.2': [0.27, 0.4] });
+    const params = await runScope.run({ runId: null }, () =>
+      insertedRow(
+        result({
+          model: 'deepseek/deepseek-v3.2',
+          primaryModel: 'deepseek/deepseek-v3.2',
+          routeUsed: { model: 'deepseek/deepseek-v3.2', provider: 'openrouter', position: 'primary' },
+        })
+      )
+    );
     expect(params[15]).toBe(0.27);
-    expect(params[16]).toBe(0.4);
-    expect(JSON.parse(String(params[19])).provider).toBe('huggingface_inference');
+    expect(JSON.parse(String(params[19])).price_known).toBeUndefined();
   });
 });

@@ -20,26 +20,11 @@ describe('resolveReasoningModels', () => {
     ).toBeNull();
   });
 
-  it('maps planner from GENERAL_EPISTEMIC_RESEARCH preset with fallback when allowFallbackForRole true', () => {
+  it('maps planner from the GENERAL_EPISTEMIC_RESEARCH preset', () => {
     const r = resolveReasoningModels({
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'planner',
-      allowFallbackForRole: true,
-    });
-    expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.planner);
-  });
-
-  it('always includes preset fallback regardless of allowFallbackForRole (preset fallback auto-fires)', () => {
-    // Post-debug fix: preset fallback always fires at the model-call level
-    // so any primary outage automatically retries the preset fallback without
-    // requiring per-role UI opt-in. `allowFallbackForRole` only gates whether
-    // the *user-supplied runtime override* fallback can replace the preset one.
-    const r = resolveReasoningModels({
-      engineVersion: 'v2',
-      researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
-      role: 'planner',
-      allowFallbackForRole: false,
     });
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.planner);
   });
@@ -49,7 +34,6 @@ describe('resolveReasoningModels', () => {
       engineVersion: 'v2',
       researchObjective: 'PATENT_GAP_ANALYSIS',
       role: 'planner',
-      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.PATENT_GAP_ANALYSIS.planner);
   });
@@ -60,7 +44,6 @@ describe('resolveReasoningModels', () => {
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'double_check',
       callPurpose: 'pipeline_double_check',
-      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.double_check);
   });
@@ -71,7 +54,6 @@ describe('resolveReasoningModels', () => {
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'double_check',
       callPurpose: 'contradiction_extraction',
-      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.double_check);
   });
@@ -81,7 +63,6 @@ describe('resolveReasoningModels', () => {
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'revision_intake',
-      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.revision_intake);
   });

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Settings, Save, CheckSquare } from 'lucide-react';
+import { Settings, Save } from 'lucide-react';
 import {
   getAdminModels,
   putAdminModels,
   type ModelOverrideEntry,
   type AdminModelsResponse,
 } from '../utils/api';
+import { modelRowsFromStoredOverrides } from '../utils/modelOverrides';
 import { plainLabel } from '../lib/researchone/plainWords';
 
 const REASONING_ROLES: { key: string; label: string }[] = [
@@ -45,7 +46,9 @@ export default function ModelsPage() {
       const res = await getAdminModels();
       setData(res);
       setEmbedding(res.embeddingOverride ?? '');
-      setRows({ ...res.overrides });
+      // Only each role's model. A backup model saved before RJ-025 is not
+      // shown: no call uses one, and the server refuses to save one.
+      setRows(modelRowsFromStoredOverrides(res.overrides));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -57,10 +60,10 @@ export default function ModelsPage() {
     void load();
   }, []);
 
-  const setRole = (key: string, field: 'primary' | 'fallback', value: string) => {
+  const setRole = (key: string, value: string) => {
     setRows(prev => ({
       ...prev,
-      [key]: { ...prev[key], [field]: value },
+      [key]: { ...prev[key], primary: value },
     }));
   };
 
@@ -86,41 +89,6 @@ export default function ModelsPage() {
     final_revision_verifier: 'finalRevisionVerifier',
   };
 
-  /**
-   * "Select all fallbacks" — copy each role's environment-default fallback
-   * into the editable fallback field. Skips rows whose fallback is already
-   * filled in (so a user-entered override is never silently overwritten).
-   */
-  const selectAllFallbacks = () => {
-    const fbMap = (data?.defaults as Record<string, unknown> | undefined)?.fallbacks as
-      | Record<string, string>
-      | undefined;
-    if (!fbMap) return;
-    setRows(prev => {
-      const next = { ...prev };
-      for (const { key } of REASONING_ROLES) {
-        const dk = roleToDefaultKey[key] ?? key;
-        const defFb = fbMap[dk];
-        if (defFb && !next[key]?.fallback?.trim()) {
-          next[key] = { ...next[key], fallback: String(defFb) };
-        }
-      }
-      return next;
-    });
-  };
-
-  const clearAllFallbacks = () => {
-    setRows(prev => {
-      const next = { ...prev };
-      for (const { key } of REASONING_ROLES) {
-        if (next[key]?.fallback) {
-          next[key] = { ...next[key], fallback: '' };
-        }
-      }
-      return next;
-    });
-  };
-
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -128,12 +96,7 @@ export default function ModelsPage() {
       const body: Record<string, unknown> = {};
       for (const { key } of REASONING_ROLES) {
         const o = rows[key];
-        if (o?.primary?.trim() || o?.fallback?.trim()) {
-          body[key] = {
-            primary: o?.primary?.trim() || undefined,
-            fallback: o?.fallback?.trim() || undefined,
-          };
-        }
+        if (o?.primary?.trim()) body[key] = { primary: o.primary.trim() };
       }
       if (embedding.trim()) body.embedding = embedding.trim();
       await putAdminModels(undefined, body);
@@ -146,7 +109,6 @@ export default function ModelsPage() {
   };
 
   const defaults = data?.defaults as Record<string, unknown> | undefined;
-  const fb = defaults?.fallbacks as Record<string, string> | undefined;
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
@@ -157,7 +119,9 @@ export default function ModelsPage() {
         </h1>
         <p className="text-slate-400 text-sm mt-1">
           Overrides are stored on the server (not in .env). Empty fields use environment defaults. Requires an
-          admin account (see ADMIN_USER_IDS on the backend).
+          admin account (see ADMIN_USER_IDS on the backend). Each role uses only the model set here: there is no
+          backup model. If that model&apos;s provider refuses, the same model is asked on another provider that
+          serves it.
         </p>
       </div>
 
@@ -178,38 +142,12 @@ export default function ModelsPage() {
           </div>
 
           <div className="card overflow-x-auto">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-3 pb-1">
-              <p className="text-xs text-slate-500">
-                {REASONING_ROLES.length} agent roles · click <span className="text-slate-300">Select all fallbacks</span>{' '}
-                to populate every empty fallback with the environment default.
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn-ghost text-xs flex items-center gap-1.5 border border-accent/30 text-accent px-3 py-1.5 rounded-lg"
-                  onClick={selectAllFallbacks}
-                  disabled={saving}
-                  title="Copy each role's environment-default fallback into the editable field. Existing fallback values are preserved."
-                >
-                  <CheckSquare size={13} />
-                  Select all fallbacks
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs"
-                  onClick={clearAllFallbacks}
-                  disabled={saving}
-                >
-                  Clear all
-                </button>
-              </div>
-            </div>
+            <p className="text-xs text-slate-500 px-3 pt-3 pb-1">{REASONING_ROLES.length} agent roles</p>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-indigo-900/30 text-left text-slate-500">
                   <th className="p-2">Role</th>
-                  <th className="p-2">Primary override</th>
-                  <th className="p-2">Fallback override</th>
+                  <th className="p-2">Model override</th>
                   <th className="p-2 text-xs">Env default</th>
                 </tr>
               </thead>
@@ -217,7 +155,6 @@ export default function ModelsPage() {
                 {REASONING_ROLES.map(({ key, label }) => {
                   const dk = roleToDefaultKey[key] ?? key;
                   const defPrimary = defaults?.[dk];
-                  const defFb = fb?.[dk];
                   return (
                   <tr key={key} className="border-b border-indigo-900/10">
                     <td className="p-2 text-slate-300 whitespace-nowrap">{label}</td>
@@ -226,18 +163,10 @@ export default function ModelsPage() {
                         className="input text-xs w-full min-w-[180px]"
                         placeholder={defPrimary != null ? String(defPrimary) : ''}
                         value={rows[key]?.primary ?? ''}
-                        onChange={e => setRole(key, 'primary', e.target.value)}
+                        onChange={e => setRole(key, e.target.value)}
                       />
                     </td>
-                    <td className="p-2">
-                      <input
-                        className="input text-xs w-full min-w-[180px]"
-                        placeholder={defFb != null ? String(defFb) : ''}
-                        value={rows[key]?.fallback ?? ''}
-                        onChange={e => setRole(key, 'fallback', e.target.value)}
-                      />
-                    </td>
-                    <td className="p-2 text-xs text-slate-600 max-w-[200px] truncate" title={`${String(defPrimary ?? '')} / ${String(defFb ?? '')}`}>
+                    <td className="p-2 text-xs text-slate-600 max-w-[200px] truncate" title={String(defPrimary ?? '')}>
                       {String(defPrimary ?? '')}
                     </td>
                   </tr>

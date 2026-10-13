@@ -198,7 +198,8 @@ function call(
 ): Promise<ModelCallResult> {
   return callRoleModel({
     role,
-    runtimeOverrides: { primary, fallback: BACKUP },
+    // A stale caller may still send a backup model; it is never called.
+    runtimeOverrides: { primary, fallback: BACKUP } as { primary?: string },
     messages: [
       { role: 'system', content: 'Write the section.' },
       { role: 'user', content: 'Section 3.' },

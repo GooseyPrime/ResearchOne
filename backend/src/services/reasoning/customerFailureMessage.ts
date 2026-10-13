@@ -21,6 +21,7 @@
 export type CustomerFailureMessageId =
   | 'ai_service_unavailable_writing'
   | 'ai_service_unavailable'
+  | 'ai_model_unavailable'
   | 'run_could_not_finish';
 
 const NOT_CHARGED = 'You have not been charged.';
@@ -70,6 +71,7 @@ function canRunAgain(status: string | null | undefined, meta: Record<string, unk
 export const CUSTOMER_FAILURE_MESSAGES: Readonly<Record<CustomerFailureMessageId, string>> = {
   ai_service_unavailable_writing: `The report could not be written because our AI service is temporarily unavailable. ${NOT_CHARGED} ${RUN_AGAIN}`,
   ai_service_unavailable: `This run stopped because our AI service is temporarily unavailable. ${NOT_CHARGED} ${RUN_AGAIN}`,
+  ai_model_unavailable: `This run did not start because the AI model one of its steps needs cannot be reached from any of our providers right now. We do not swap in a different model. ${NOT_CHARGED} ${RUN_AGAIN}`,
   run_could_not_finish: `This run could not be finished. ${NOT_CHARGED} ${RUN_AGAIN}`,
 };
 
@@ -98,7 +100,9 @@ export function customerFailureMessage(args: {
   const classification = (args.classification ?? '').trim();
   const stage = (args.stage ?? '').trim().toLowerCase();
   let id: CustomerFailureMessageId = 'run_could_not_finish';
-  if (AI_SERVICE_CLASSIFICATIONS.has(classification)) {
+  if (classification === 'no_usable_model_route') {
+    id = 'ai_model_unavailable';
+  } else if (AI_SERVICE_CLASSIFICATIONS.has(classification)) {
     id = WRITING_STAGES.has(stage) ? 'ai_service_unavailable_writing' : 'ai_service_unavailable';
   }
   return { id, text: CUSTOMER_FAILURE_MESSAGES[id] };

@@ -13,9 +13,12 @@
  *      This part is read from the table in `providerRoutes.ts`; it sends
  *      nothing.
  *
- * It runs only when an administrator calls `POST /api/admin/providers/health`.
- * Nothing calls it at startup, on a timer or during a run: every check is a
- * real request on the server's own provider accounts.
+ * The full check runs only when an administrator calls
+ * `POST /api/admin/providers/health`. The one-route request it is built on
+ * (`probeRoute`) is also what the startup preflight and the run readiness
+ * check send (RJ-025 repair), so all three ask a route the way a research
+ * call does, and every answer is kept in `routeAvailability.ts`. Nothing
+ * calls it on a timer.
  *
  * The error text returned is the provider's own message, shortened, with
  * anything that looks like a key removed.
@@ -24,11 +27,12 @@ import axios, { type AxiosError } from 'axios';
 import { InferenceClient } from '@huggingface/inference';
 import { config } from '../../config';
 import { REASONING_MODEL_ROLES, type ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
-import { buildOpenRouterAppHeaders } from './openrouterProviderBlock';
+import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openrouterProviderBlock';
 import {
   anthropicMessagesEndpoint,
   anthropicRequestHeaders,
   chosenModelsForRole,
+  classifyHfError,
   classifyModelError,
   extractProviderMessage,
   nvidiaChatEndpoint,
@@ -45,6 +49,7 @@ import {
   type ModelProviderName,
   type RouteConfigurationReason,
 } from './providerRoutes';
+import { recordRouteAnswered, recordRouteRefused } from './routeAvailability';
 
 /** The size of the answer asked for. The request is as small as a provider accepts. */
 export const PROVIDER_HEALTH_MAX_TOKENS = 5;
@@ -224,11 +229,15 @@ async function sendHealthRequest(target: ProviderHealthTarget): Promise<number |
 
   switch (target.provider) {
     case 'openrouter':
+      // The same provider block a research call sends: the account's
+      // data-collection setting can leave a model with no host, and a probe
+      // without it would report a route the real call cannot take.
       return (
-        await axios.post(`${config.openrouter.baseUrl}/chat/completions`, body, {
-          ...request,
-          headers: buildOpenRouterAppHeaders(config.openrouter.apiKey),
-        })
+        await axios.post(
+          `${config.openrouter.baseUrl}/chat/completions`,
+          { ...body, provider: buildOpenRouterProviderBlock(config.openrouter.dataCollection) },
+          { ...request, headers: buildOpenRouterAppHeaders(config.openrouter.apiKey, { 'X-ResearchOne-Call-Type': 'preflight' }) }
+        )
       ).status;
     case 'anthropic':
       return (await axios.post(anthropicMessagesEndpoint(), body, { ...request, headers: anthropicRequestHeaders() })).status;
@@ -246,10 +255,29 @@ async function sendHealthRequest(target: ProviderHealthTarget): Promise<number |
   }
 }
 
-async function checkOne(target: ProviderHealthTarget): Promise<ProviderHealthResult> {
+/** Sends the request for one route. Replaced in tests; never called by a test against a real provider. */
+export type ProviderRouteSender = (target: ProviderHealthTarget) => Promise<number | null>;
+
+/**
+ * Ask one route once (provider and the id the model has there) and record the
+ * outcome in `routeAvailability.ts`. Used by the admin health check, the
+ * startup preflight and the run readiness check, so all three ask the route
+ * the way a research call does. Never throws: a refusal is a result.
+ */
+export async function probeRoute(
+  target: ProviderHealthTarget,
+  send: ProviderRouteSender = sendHealthRequest
+): Promise<ProviderHealthResult> {
+  const result = await checkOne(target, send);
+  if (result.ok) recordRouteAnswered(target.provider, target.model, 'probe');
+  else if (result.classification) recordRouteRefused(target.provider, target.model, result.classification, 'probe');
+  return result;
+}
+
+async function checkOne(target: ProviderHealthTarget, send: ProviderRouteSender): Promise<ProviderHealthResult> {
   const startedAt = Date.now();
   try {
-    const status = await sendHealthRequest(target);
+    const status = await send(target);
     return { ...target, ok: true, status: status ?? 200, durationMs: Date.now() - startedAt };
   } catch (err) {
     const durationMs = Date.now() - startedAt;
@@ -268,18 +296,20 @@ async function checkOne(target: ProviderHealthTarget): Promise<ProviderHealthRes
         error: redactKeyLikeText(message),
       };
     }
+    const hfStatus = (err as { httpResponse?: { status?: unknown } } | null)?.httpResponse?.status;
     return {
       ...target,
       ok: false,
-      status: null,
+      status: typeof hfStatus === 'number' ? hfStatus : null,
       durationMs,
-      classification: 'provider_unavailable',
+      // The Hugging Face client throws its own errors, with the HTTP status on them.
+      classification: classifyHfError(err),
       error: redactKeyLikeText(err instanceof Error ? err.message : String(err)),
     };
   }
 }
 
 /** Ask each configured provider once, side by side. Never throws: a refusal is a result. */
-export async function checkProviderHealth(): Promise<ProviderHealthResult[]> {
-  return Promise.all(providerHealthTargets().map((target) => checkOne(target)));
+export async function checkProviderHealth(send?: ProviderRouteSender): Promise<ProviderHealthResult[]> {
+  return Promise.all(providerHealthTargets().map((target) => probeRoute(target, send)));
 }

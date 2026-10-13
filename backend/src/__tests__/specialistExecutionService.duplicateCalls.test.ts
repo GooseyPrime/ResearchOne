@@ -52,7 +52,6 @@ describe('specialistExecutionService duplicate execution guard', () => {
         skipReasons: {},
         expectedOutputTemplateId: 'intent_opportunity_discovery',
       },
-      allowFallbackByRole: {},
     });
 
     expect(result.ran.sort()).toEqual(['competitor_mapper', 'market_scout']);

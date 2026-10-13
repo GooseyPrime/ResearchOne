@@ -333,7 +333,7 @@ describe.each(MATRIX)('intent fidelity — $intent', (row) => {
     async () => {
       let resolved: string | null = null;
       try {
-        resolved = (await classifyIntent(row.prompt, undefined, { allowFallbackByRole: {} }))
+        resolved = (await classifyIntent(row.prompt, undefined, {}))
           .primaryIntent;
       } catch {
         // The classifier had no model and no deterministic answer.
@@ -417,7 +417,7 @@ describe('intent routing does not over-claim', () => {
   ])('does not turn %s into an investigation', async (prompt) => {
     let resolved: string | null = null;
     try {
-      resolved = (await classifyIntent(prompt, undefined, { allowFallbackByRole: {} })).primaryIntent;
+      resolved = (await classifyIntent(prompt, undefined, {})).primaryIntent;
     } catch {
       resolved = null;
     }
@@ -428,7 +428,7 @@ describe('intent routing does not over-claim', () => {
     const brief = await classifyIntent(
       'Why did the rail modernization program fail to deliver on time?',
       undefined,
-      { allowFallbackByRole: {} }
+      {}
     );
     expect(brief.primaryIntent).toBe('investigation');
   });
@@ -441,7 +441,7 @@ describe('an explicit operation wins over an incidental noun', () => {
     // A bare `opportunit\w*` trigger hit once here and `comparative` once, and
     // the specificity tie-break put opportunity discovery first — so an
     // explicit comparison deterministically got a landscape report.
-    const brief = await classifyIntent(prompt, undefined, { allowFallbackByRole: {} });
+    const brief = await classifyIntent(prompt, undefined, {});
     expect(brief.primaryIntent).toBe(expected);
   });
 
@@ -451,7 +451,7 @@ describe('an explicit operation wins over an incidental noun', () => {
       'Identify untapped opportunities in industrial heat recovery',
       'Where are the opportunity gaps in small-business payroll software?',
     ]) {
-      const brief = await classifyIntent(prompt, undefined, { allowFallbackByRole: {} });
+      const brief = await classifyIntent(prompt, undefined, {});
       expect(brief.primaryIntent).toBe('opportunity_discovery');
     }
   });

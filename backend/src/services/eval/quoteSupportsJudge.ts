@@ -1,5 +1,5 @@
 import { callRoleModel } from '../openrouter/openrouterService';
-import { QUOTE_SUPPORTS_FALLBACK, QUOTE_SUPPORTS_MODEL, QUOTE_SUPPORTS_PROMPT } from './quoteSupportsPrompt';
+import { QUOTE_SUPPORTS_MODEL, QUOTE_SUPPORTS_PROMPT } from './quoteSupportsPrompt';
 
 export const QUOTE_SUPPORTS_PAIR_CAP = 25;
 
@@ -41,10 +41,7 @@ export async function judgeQuoteSupports(pairs: QuotePair[], call: JudgeCall = c
           { role: 'user', content: `Sentence: ${pair.sentence}\nQuote: ${pair.quote}` },
         ],
         temperature: 0,
-        runtimeOverrides: {
-          primary: QUOTE_SUPPORTS_MODEL,
-          fallback: QUOTE_SUPPORTS_FALLBACK,
-        },
+        runtimeOverrides: { primary: QUOTE_SUPPORTS_MODEL },
       });
       const parsed = parseSupports(result.content);
       if (parsed === null) {

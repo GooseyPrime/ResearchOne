@@ -98,7 +98,7 @@ const was = {
 function write() {
   return callRoleModel({
     role: 'section_drafter',
-    runtimeOverrides: { primary: PRIMARY, fallback: BACKUP },
+    runtimeOverrides: { primary: PRIMARY, fallback: BACKUP } as { primary?: string },
     messages: [
       { role: 'system', content: 'Write the section.' },
       { role: 'user', content: 'Section 3.' },
@@ -192,7 +192,7 @@ describe('a model call that one provider refuses for credit', () => {
 
     const result = await callRoleModel({
       role: 'section_drafter',
-      runtimeOverrides: { primary: 'NousResearch/Hermes-3-Llama-3.1-70B', fallback: PRIMARY },
+      runtimeOverrides: { primary: 'NousResearch/Hermes-3-Llama-3.1-70B' },
       messages: [{ role: 'user', content: 'Section 3.' }],
     });
 
@@ -209,7 +209,7 @@ describe('a model call that one provider refuses for credit', () => {
     await expect(
       callRoleModel({
         role: 'section_drafter',
-        runtimeOverrides: { primary: PRIMARY, fallback: BACKUP },
+        runtimeOverrides: { primary: PRIMARY, fallback: BACKUP } as { primary?: string },
         byokApiKeyOverride: 'customer-key',
         messages: [{ role: 'user', content: 'Section 3.' }],
       })

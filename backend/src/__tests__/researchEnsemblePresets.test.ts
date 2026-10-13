@@ -95,26 +95,18 @@ describe('researchEnsemblePresets', () => {
     expect(() => validateV2ModePresetsAgainstAllowlist()).not.toThrow();
   });
 
-  it('mergePresetWithRuntimeOverride prefers non-empty runtime fields', () => {
+  it('mergePresetWithRuntimeOverride resolves one model: the run choice when set, else the preset primary', () => {
     const base = { primary: 'a/x', fallback: 'b/y' };
-    expect(mergePresetWithRuntimeOverride(base, {}, true)).toEqual(base);
-    expect(mergePresetWithRuntimeOverride(base, { primary: 'openai/o3' }, true)).toEqual({
-      primary: 'openai/o3',
-      fallback: 'b/y',
-    });
-    expect(
-      mergePresetWithRuntimeOverride(base, { primary: 'openai/o3', fallback: 'deepseek/deepseek-r1' }, true)
-    ).toEqual({ primary: 'openai/o3', fallback: 'deepseek/deepseek-r1' });
+    expect(mergePresetWithRuntimeOverride(base, {})).toEqual({ primary: 'a/x' });
+    expect(mergePresetWithRuntimeOverride(base, undefined)).toEqual({ primary: 'a/x' });
+    expect(mergePresetWithRuntimeOverride(base, { primary: 'openai/o3' })).toEqual({ primary: 'openai/o3' });
   });
 
-  it('mergePresetWithRuntimeOverride ignores runtime-override fallback when allowFallbackForRole is false, but keeps preset fallback', () => {
-    // Preset fallback always fires. `allowFallbackForRole` only gates whether
-    // the user-supplied runtime override fallback can replace the preset one.
-    const base = { primary: 'a/x', fallback: 'b/y' };
-    expect(mergePresetWithRuntimeOverride(base, { fallback: 'deepseek/deepseek-r1' }, false)).toEqual({
-      primary: 'a/x',
-      fallback: 'b/y',
-    });
+  it('mergePresetWithRuntimeOverride never returns the preset backup model (RJ-025)', () => {
+    const preset = { primary: 'a/x', fallback: 'b/y' };
+    const merged = mergePresetWithRuntimeOverride(preset, { primary: '  ' });
+    expect(merged).toEqual({ primary: 'a/x' });
+    expect(Object.values(merged)).not.toContain('b/y');
   });
 
   it('has every objective and every role', () => {

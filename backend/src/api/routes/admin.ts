@@ -13,6 +13,7 @@ import { writeAdminAction } from '../admin/adminAuditLog';
 import { isTierName } from '../../config/tierRules';
 import {
   getCachedOverrides,
+  ObsoleteBackupModelInputError,
   refreshRuntimeModelOverrides,
   saveRuntimeModelOverrides,
   validateAndNormalizePayload,
@@ -157,7 +158,6 @@ router.get('/models', async (req, res) => {
       section_rewriter: config.models.sectionRewriter,
       citation_integrity_checker: config.models.citationIntegrityChecker,
       final_revision_verifier: config.models.finalRevisionVerifier,
-      fallbacks: config.models.fallbacks,
     },
     overrides: cached.overrides,
     embeddingOverride: cached.embedding ?? null,
@@ -177,7 +177,7 @@ router.put('/models', async (req, res) => {
     res.json({ ok: true, overrides: getCachedOverrides().overrides, embeddingOverride: getCachedOverrides().embedding ?? null });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Invalid payload';
-    res.status(400).json({ error: msg });
+    res.status(400).json({ error: msg, ...(err instanceof ObsoleteBackupModelInputError ? { code: err.code } : {}) });
   }
 });
 

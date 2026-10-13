@@ -293,7 +293,7 @@ async function main(): Promise<void> {
       if (!match) throw new Error(`missing submission for ${task.id}`);
       return { runId: match.runId };
     },
-    wait: async () => {},
+    wait: async () => undefined,
     load: loadStoredRun,
   };
   const rows = await runHarness(transport, scored.map((item) => item.task), flagOverrides);

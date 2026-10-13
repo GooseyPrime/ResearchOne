@@ -151,33 +151,45 @@ async function findActivePrice(key: string): Promise<ModelPrice | null> {
  * model id at different prices, and a free NVIDIA call must not be costed at
  * a paid provider's price for a model of the same name.
  *
- * A Hugging Face Inference call that answered for a role whose own id is on
- * another provider (RJ-025: the same model, reached under its hub id) is
- * priced, in order, from: the row keyed `huggingface_inference:<hub id>`, the
- * row for the bare hub id, and then the row for the role's own id
- * (`sameModelAs`). The last one is an estimate: it is the same model at the
- * other provider's price, used so the call is not recorded as free. Hugging
- * Face publishes no single price for a model, because the host it picks sets
- * the price. Add a `huggingface_inference:<hub id>` row to replace the estimate.
+ * A Hugging Face Inference call is priced from the row keyed
+ * `huggingface_inference:<hub id>`, then the row for the bare hub id. When
+ * neither exists the price is unknown and is recorded as unknown
+ * (`known: false`, zero in the price columns, a warning logged once): the
+ * price another provider charges for the same model is never used in its
+ * place (RJ-025 repair). Hugging Face publishes no single price for a model,
+ * because the host it picks sets the price.
  */
+export interface CallPricing {
+  price: ModelPrice;
+  /** False when no price was found for the provider that answered. The price columns then hold zero, which means unknown, not free. */
+  known: boolean;
+}
+
+export async function getCallPricing(args: {
+  model: string;
+  provider?: string | null;
+  listPrice?: ModelPrice | null;
+}): Promise<CallPricing> {
+  if (args.provider === 'anthropic' || args.provider === 'nvidia' || args.provider === 'together') {
+    const row = await findActivePrice(`${args.provider}:${args.model}`);
+    if (row) return { price: row, known: true };
+    if (args.listPrice) return { price: args.listPrice, known: true };
+  }
+  if (args.provider === 'huggingface_inference') {
+    const row = await findActivePrice(`huggingface_inference:${args.model}`);
+    if (row) return { price: row, known: true };
+  }
+  const price = await getModelPrice(args.model);
+  return { price, known: price !== ZERO_PRICE };
+}
+
+/** The price only; see `getCallPricing`. */
 export async function getCallPrice(args: {
   model: string;
   provider?: string | null;
   listPrice?: ModelPrice | null;
-  /** The role's own id for the same model, when the call was answered under another id. */
-  sameModelAs?: string | null;
 }): Promise<ModelPrice> {
-  if (args.provider === 'anthropic' || args.provider === 'nvidia' || args.provider === 'together') {
-    const row = await findActivePrice(`${args.provider}:${args.model}`);
-    if (row) return row;
-    if (args.listPrice) return args.listPrice;
-  }
-  if (args.provider === 'huggingface_inference' && args.sameModelAs && args.sameModelAs !== args.model) {
-    const row = (await findActivePrice(`huggingface_inference:${args.model}`)) ?? (await findActivePrice(args.model));
-    if (row) return row;
-    return getModelPrice(args.sameModelAs);
-  }
-  return getModelPrice(args.model);
+  return (await getCallPricing(args)).price;
 }
 
 /**

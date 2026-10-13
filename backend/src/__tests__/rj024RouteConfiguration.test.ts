@@ -23,6 +23,7 @@
  * client. No request leaves the test process.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetRouteAvailabilityForTests } from '../services/openrouter/routeAvailability';
 
 type Provider = 'openrouter' | 'anthropic' | 'together' | 'nvidia' | 'huggingface_inference';
 interface Sent {
@@ -171,7 +172,8 @@ const was = {
 function call(role: ModelRole = 'section_drafter', primary: string = CLAUDE): Promise<ModelCallResult> {
   return callRoleModel({
     role,
-    runtimeOverrides: { primary, fallback: BACKUP },
+    // A stale caller may still send a backup model; it is never called.
+    runtimeOverrides: { primary, fallback: BACKUP } as { primary?: string },
     messages: [
       { role: 'system', content: 'Write the section.' },
       { role: 'user', content: 'Section 3.' },
@@ -307,6 +309,9 @@ describe('a 400 that is about how the route is set up', () => {
     expect(moved.routeUsed).toEqual({ model: CLAUDE_DIRECT, provider: 'anthropic', position: 'cross_provider' });
 
     h.sent.length = 0;
+    // The refusal above keeps OpenRouter out for a while (routeAvailability.ts);
+    // this half asks about a fresh process.
+    resetRouteAvailabilityForTests();
     h.answers.openrouter = () => ({ status: 400, message: 'messages: at least one message is required' });
     await expect(call()).rejects.toMatchObject({ classification: 'bad_request' });
     expect(h.sent.map((sent) => sent.provider)).toEqual(['openrouter']);

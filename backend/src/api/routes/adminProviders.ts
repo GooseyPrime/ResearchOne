@@ -18,6 +18,7 @@ import {
   providersServingNoRoleModel,
   roleProviderCoverage,
 } from '../../services/openrouter/providerHealth';
+import { allRouteAvailability } from '../../services/openrouter/routeAvailability';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -38,6 +39,9 @@ router.post('/health', async (req, res, next) => {
       providersServingNoRoleModel: providersServingNoRoleModel(),
       roles,
       singleProviderRoles: roles.filter((entry) => entry.singleProvider).map((entry) => entry.role),
+      // What this server process has seen each route do: answered, or refused
+      // and for what reason. A key alone does not make a route usable.
+      routeAvailability: allRouteAvailability(),
     });
   } catch (err) {
     next(err);

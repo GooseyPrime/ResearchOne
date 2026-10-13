@@ -98,6 +98,12 @@ export interface CanonicalFailureMeta {
   customerMessage?: string;
   /** Every model route tried before the failing call gave up. Diagnostics only. */
   routesTried?: unknown[];
+  /**
+   * For a run stopped before any work because a required stage had no usable
+   * route for its exact model (RJ-025): each such stage, its model and the
+   * state of each of its routes. Administrators only.
+   */
+  unavailableStages?: unknown[];
 }
 
 export interface RunFailureInput {
@@ -209,6 +215,7 @@ export function decideRunStateOnFailure(input: RunFailureInput): FailureTransiti
     customerMessageId: typeof raw.customerMessageId === 'string' ? raw.customerMessageId : undefined,
     customerMessage: typeof raw.customerMessage === 'string' ? raw.customerMessage : undefined,
     routesTried: Array.isArray(raw.routesTried) ? raw.routesTried : undefined,
+    unavailableStages: Array.isArray(raw.unavailableStages) ? raw.unavailableStages : undefined,
   };
 
   return {

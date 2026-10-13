@@ -387,7 +387,6 @@ export async function classifyIntent(
   llmOpts: {
     engineVersion?: string;
     researchObjective?: import('../reasoning/reasoningModelPolicy').ResearchObjective;
-    allowFallbackByRole: Record<string, boolean>;
     byokApiKeyOverride?: string;
   }
 ): Promise<ResearchBrief> {
@@ -446,7 +445,6 @@ export async function classifyIntent(
       role: 'planner',
       engineVersion: llmOpts.engineVersion,
       researchObjective: llmOpts.researchObjective,
-      allowFallbackByRole: llmOpts.allowFallbackByRole,
       callPurpose: 'phase_b_research_brief_classification',
       runtimeOverrides: { primary: config.models.planning },
       byokApiKeyOverride: llmOpts.byokApiKeyOverride,

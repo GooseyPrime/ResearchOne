@@ -103,10 +103,7 @@ describe('OpenRouter request body — provider block', () => {
       role: 'reasoner',
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
-      runtimeOverrides: {
-        primary: 'qwen/qwen3-235b-a22b-thinking-2507',
-        fallback: 'qwen/qwen3-235b-a22b-thinking-2507',
-      },
+      runtimeOverrides: { primary: 'qwen/qwen3-235b-a22b-thinking-2507' },
       messages: [
         { role: 'system', content: 'sys' },
         { role: 'user', content: 'q' },

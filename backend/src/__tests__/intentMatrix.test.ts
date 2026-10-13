@@ -465,7 +465,6 @@ Deliver exactly 20 ranked opportunities. Recommend the top 10, top 5, and top 3 
       }),
     });
     const brief = await classifyIntent(failedRequestWithExplicitDeclaration, undefined, {
-      allowFallbackByRole: {},
       byokApiKeyOverride: 'test-openrouter-key',
     });
 

@@ -204,7 +204,6 @@ export async function planGapQueries(args: {
   model: {
     engineVersion?: string;
     researchObjective?: ResearchObjective;
-    allowFallbackByRole?: Record<string, boolean>;
     byokApiKeyOverride?: string;
   };
 }): Promise<string[] | null> {
@@ -324,7 +323,6 @@ export async function runDiscoveryOrchestrator(args: {
   filterTags?: string[];
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
   userId?: string;
   specialistAgentIds?: string[];
@@ -369,7 +367,6 @@ async function runDiscoveryOrchestratorInner(args: {
   filterTags?: string[];
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
   userId?: string;
   specialistAgentIds?: string[];
@@ -388,7 +385,6 @@ async function runDiscoveryOrchestratorInner(args: {
     plan,
     engineVersion,
     researchObjective,
-    allowFallbackByRole,
     byokApiKeyOverride,
     userId,
     specialistAgentIds,
@@ -416,7 +412,6 @@ async function runDiscoveryOrchestratorInner(args: {
       role: 'planner',
       engineVersion,
       researchObjective,
-      allowFallbackByRole,
       byokApiKeyOverride,
       messages: [
         { role: 'system', content: withPreamble(DISCOVERY_PLANNER_PROMPT) },
@@ -723,7 +718,6 @@ async function runDiscoveryOrchestratorInner(args: {
         engineVersion,
         researchObjective,
         byokApiKeyOverride,
-        allowFallbackByRole,
         messages: [
           { role: 'system', content: withPreamble(DISCOVERY_FOLLOWUP_PROMPT) },
           {
@@ -793,7 +787,7 @@ async function runDiscoveryOrchestratorInner(args: {
         queriesExecuted,
         found: allCandidates,
         maxQueries: Math.min(3, remainingBudget),
-        model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
+        model: { engineVersion, researchObjective, byokApiKeyOverride },
       });
       if (!planned) break;
       extraQueries = planned;
@@ -871,7 +865,7 @@ async function runDiscoveryOrchestratorInner(args: {
         source: candidate.provider,
         excerpt: typeof candidate.snippet === 'string' ? candidate.snippet : '',
       })),
-      model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
+      model: { engineVersion, researchObjective, byokApiKeyOverride },
     });
     for (const [key, verdict] of judged.verdicts) rememberVerdict(runId, key, verdict);
     const notUsed = wave.filter((candidate) => verdictFor(runId, keyOfCandidate(candidate))?.relevant !== true);
@@ -1129,7 +1123,7 @@ async function runDiscoveryOrchestratorInner(args: {
         queriesExecuted,
         found: relevantFound,
         maxQueries: RELEVANCE_GAP_QUERIES_PER_ROUND,
-        model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
+        model: { engineVersion, researchObjective, byokApiKeyOverride },
       });
       if (!planned) break;
       // These rounds may go past the run's ordinary query budget, by their own

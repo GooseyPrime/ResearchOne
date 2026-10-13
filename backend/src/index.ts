@@ -11,7 +11,7 @@ import { getLoadedEnvFilePath } from './bootstrap/loadEnv';
 import { validateEnvModelPolicy } from './config/modelRuntime';
 import { config } from './config';
 import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
-import { runV2OpenRouterPreflightAndLog } from './services/openrouter/openrouterPreflight';
+import { runModelRoutePreflightAndLog } from './services/openrouter/openrouterPreflight';
 import { startTierResetCron } from './jobs/tierResetCron';
 import { startRetentionCleanupCron } from './jobs/retentionCleanupCron';
 import { startSupabaseKeepAliveCron } from './jobs/supabaseKeepAliveCron';
@@ -81,12 +81,11 @@ async function main() {
     startSupabaseBackupCron();
     logger.info('Supabase backup cron started');
 
-    // Best-effort: probe OpenRouter to confirm every V2 default primary
-    // has at least one live upstream for the configured account. Logs a
-    // structured warning per affected (objective, role, slug) if not.
-    // Never blocks listen.
-    runV2OpenRouterPreflightAndLog().catch((e) =>
-      logger.warn('[v2-preflight] unexpected error', e)
+    // Best-effort: ask each route every role's exact model has on this
+    // server once, and keep the answers for the run readiness check (RJ-025).
+    // Logs each role whose model has no route that answered. Never blocks listen.
+    runModelRoutePreflightAndLog().catch((e) =>
+      logger.warn('[model-route-preflight] unexpected error', e)
     );
   } catch (err) {
     logger.error('Fatal startup error:', err);

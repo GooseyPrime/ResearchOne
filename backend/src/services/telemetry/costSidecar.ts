@@ -18,7 +18,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { createHash, randomUUID } from 'crypto';
 import { adminQuery } from '../../db/pool';
 import { logger } from '../../utils/logger';
-import { computeCostUsd, getCallPrice } from './pricingCatalog';
+import { computeCostUsd, getCallPricing } from './pricingCatalog';
 import type { ModelCallResult } from '../openrouter/openrouterService';
 
 // ────────────────────────────────────────────────────────────────────
@@ -266,12 +266,13 @@ async function writeRow(
 ): Promise<void> {
   // Priced by the provider that answered: the same model id can cost a
   // different amount, or nothing, on another provider.
-  const price = await getCallPrice({
+  // A price that is not known for the provider that answered stays unknown
+  // (`price_known: false` in metadata). Another provider's price for the same
+  // model is never recorded in its place (RJ-025 repair).
+  const { price, known: priceKnown } = await getCallPricing({
     model: result.model,
     provider: result.routeUsed?.provider,
     listPrice: result.listPrice,
-    // Every route of a call is the same model, so the role's own id names it too.
-    sameModelAs: result.routeUsed?.position === 'primary' ? null : result.primaryModel,
   });
   const calculatedCost = computeCostUsd(result.promptTokens, result.completionTokens, price);
   const phase = scope.phaseOverride ?? rolePhaseFor(opts.role, opts.callPurpose);
@@ -334,6 +335,9 @@ async function writeRow(
       JSON.stringify({
         // Anything else we want to grep on later — kept lean.
         primary_model: result.primaryModel,
+        // False: no price is known for the provider and model that answered.
+        // The price and cost columns then hold zero, which means unknown.
+        ...(priceKnown ? {} : { price_known: false }),
         // Which provider answered and where it sat in the role's order.
         ...(result.routeUsed
           ? { provider: result.routeUsed.provider, route_position: result.routeUsed.position }

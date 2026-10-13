@@ -13,7 +13,6 @@ import {
   type ResearchObjective,
 } from './reasoningModelPolicy';
 import { normalizeRunOverrides, runtimeOverrideForRole } from './researchOrchestratorNormalize';
-import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
 import { logger } from '../../utils/logger';
 import { rebindRevisedCitations, renumberAfterRevision } from './citationLock';
 import { recordDoiChecks, type CitationWriter } from './citationBinding';
@@ -416,13 +415,9 @@ async function createReportRevisionInner(args: {
   const runModelOverrides = normalizeRunOverrides(
     (reportRunModelEnsembleRows[0]?.model_overrides ?? null) as PerRunModelOverrides | undefined
   );
-  const allowFallbackByRole = allowFallbackByRoleFromModelEnsembleSnapshot(
-    reportRunModelEnsembleRows[0]?.model_ensemble ?? null
-  );
   const revOpts = {
     engineVersion: runEngineVersion,
     researchObjective: runObjective,
-    allowFallbackByRole,
   };
   const revisionRoleCall = (role: ReasoningModelRole) => ({
     role,

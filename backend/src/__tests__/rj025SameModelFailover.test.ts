@@ -646,8 +646,9 @@ describe('a call whose provider refuses', () => {
 
     await expect(
       researchCall('section_drafter', {
-        runtimeOverrides: { primary: V32, fallback: KIMI },
-        allowFallbackByRole: { section_drafter: true },
+        // What an old request form sent: a backup and the switch that turned it on.
+        runtimeOverrides: { primary: V32, fallback: KIMI } as { primary?: string },
+        ...({ allowFallbackByRole: { section_drafter: true } } as object),
       })
     ).rejects.toBeInstanceOf(NormalizedModelError);
 

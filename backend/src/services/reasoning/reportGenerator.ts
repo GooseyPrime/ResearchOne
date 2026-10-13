@@ -1194,7 +1194,6 @@ export async function generateIterativeReport(args: {
   contractArtifacts?: readonly ContractArtifact[];
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   requestedFormats?: string[];
   /** User-requested total report length in words. Clamped to
    *  [REPORT_WORD_COUNT_MIN, REPORT_WORD_COUNT_MAX]. Falls back to
@@ -1301,7 +1300,6 @@ export async function generateIterativeReport(args: {
   const v2 = {
     engineVersion: args.engineVersion,
     researchObjective: args.researchObjective,
-    allowFallbackByRole: args.allowFallbackByRole,
     byokApiKeyOverride: args.byokApiKeyOverride,
     // The report is written the same way whatever the report type: with the
     // baseline source handling, and without the challenge method's framing.

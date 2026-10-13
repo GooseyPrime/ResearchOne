@@ -1,171 +1,159 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { config } from '../config';
-import { preflightV2OpenRouterModels } from '../services/openrouter/openrouterPreflight';
-
 /**
- * Pre-flight probe is the safety net that surfaces "this V2 default
- * is unreachable on the configured OpenRouter account" at deploy time
- * instead of at first user click. The 2026-04-28-PM outage was a 404
- * "No allowed providers are available" on the planner — exactly the
- * shape this probe catches.
+ * Startup preflight (RJ-025 repair): the targets are every route each role's
+ * exact model has on this server, built from the same definitions a call
+ * uses, and the answers are kept for the run readiness check.
  *
- * Post-PR41-review (2026-04-28-PM, Codex P1 + Copilot 5/6/7), the
- * probe issues a real `/chat/completions` request that mirrors
- * `callOpenRouter` exactly: same headers, same `provider` block from
- * `openrouterProviderBlock.ts` (including `data_collection`), same base URL. That way preflight
- * pass ⇔ runtime pass for the configured account / policy. Earlier
- * revisions of this probe used `/models/<slug>/endpoints` for
- * metadata only and missed account-side provider-filter rejections.
+ * The probe is replaced here; no request leaves the test process.
  */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { config } from '../config';
+import { RESEARCH_ENGINE_VERSION } from '../config/researchEngine';
+import { V2_MODE_PRESETS } from '../config/researchEnsemblePresets';
+import {
+  preflightDisabledBySetting,
+  preflightModelRoutes,
+  preflightRouteSets,
+} from '../services/openrouter/openrouterPreflight';
+import { providerForRoute, resolvePrimaryModelForCall, serverModelRoutes } from '../services/openrouter/openrouterService';
+import type { ProviderHealthResult, ProviderHealthTarget } from '../services/openrouter/providerHealth';
+import { isSameModel } from '../services/openrouter/providerRoutes';
+import { recordRouteAnswered, recordRouteRefused, routeState } from '../services/openrouter/routeAvailability';
+import { REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../services/reasoning/reasoningModelPolicy';
 
-const FAKE_OK_RESPONSE = () => ({
-  status: 200,
-  data: {
-    choices: [{ message: { content: '' } }],
-    usage: { prompt_tokens: 4, completion_tokens: 1 },
-  },
+const HERMES4 = 'nousresearch/hermes-4-70b';
+const HERMES4_HUB = 'NousResearch/Hermes-4-70B';
+
+const was = { openrouter: config.openrouter.apiKey, hf: config.hfToken, anthropic: config.anthropic.apiKey, nvidia: config.nvidia.apiKey, together: config.together.apiKey };
+
+beforeEach(() => {
+  config.openrouter.apiKey = 'test-openrouter';
+  config.hfToken = 'test-hub';
+  config.anthropic.apiKey = 'test-anthropic';
+  config.nvidia.apiKey = 'test-nvidia';
+  config.together.apiKey = 'test-together';
 });
 
-const FAKE_404_NO_ALLOWED = () => {
-  const err = Object.assign(new Error('Request failed with status code 404'), {
-    response: {
-      status: 404,
-      data: { error: { message: 'No allowed providers are available for the selected model' } },
-    },
-  });
-  throw err;
-};
+afterEach(() => {
+  config.openrouter.apiKey = was.openrouter;
+  config.hfToken = was.hf;
+  config.anthropic.apiKey = was.anthropic;
+  config.nvidia.apiKey = was.nvidia;
+  config.together.apiKey = was.together;
+});
 
-describe('preflightV2OpenRouterModels', () => {
-  let origApiKey: string;
-  beforeEach(() => {
-    // Ensure config.openrouter.apiKey is non-empty so the probe runs.
-    origApiKey = config.openrouter.apiKey;
-    if (!origApiKey || !origApiKey.trim()) {
-      (config.openrouter as { apiKey: string }).apiKey = 'test-key-for-preflight';
+/** A probe that answers from a table and records the outcome, as `probeRoute` does. */
+function fakeProbe(refuse: (target: ProviderHealthTarget) => string | null) {
+  const asked: ProviderHealthTarget[] = [];
+  const probe = vi.fn(async (target: ProviderHealthTarget): Promise<ProviderHealthResult> => {
+    asked.push(target);
+    const reason = refuse(target);
+    if (reason) {
+      recordRouteRefused(target.provider, target.model, reason, 'probe');
+      return { ...target, ok: false, status: 402, durationMs: 1, classification: reason as ProviderHealthResult['classification'] };
+    }
+    recordRouteAnswered(target.provider, target.model, 'probe');
+    return { ...target, ok: true, status: 200, durationMs: 1 };
+  });
+  return { probe, asked };
+}
+
+describe('preflight targets', () => {
+  it('are, for every research kind and role, the routes a call for that role would take', () => {
+    for (const set of preflightRouteSets()) {
+      const model = resolvePrimaryModelForCall({
+        role: set.role as (typeof REASONING_MODEL_ROLES)[number],
+        messages: [],
+        engineVersion: RESEARCH_ENGINE_VERSION,
+        researchObjective: set.objective as (typeof RESEARCH_OBJECTIVES)[number],
+      });
+      expect(set.model).toBe(model);
+      expect(set.routes).toEqual(
+        serverModelRoutes(set.role as (typeof REASONING_MODEL_ROLES)[number], model).map((route) => ({
+          provider: providerForRoute(route),
+          model: route.model,
+        }))
+      );
     }
   });
-  afterEach(() => {
-    (config.openrouter as { apiKey: string }).apiKey = origApiKey;
-  });
 
-  it('reports ok=true when every default OR primary returns 2xx on /chat/completions', async () => {
-    const fetcher = vi.fn(async (..._args: unknown[]) => FAKE_OK_RESPONSE());
-    const summary = await preflightV2OpenRouterModels({ fetcher: fetcher as never, timeoutMs: 1 });
-    expect(summary.ok).toBe(true);
-    expect(summary.hasWarnings).toBe(false);
-    expect(summary.rolesAffected).toEqual([]);
-    expect(summary.skipped).toBeFalsy();
-    // Every probed slug should be marked OK with status 200.
-    for (const m of Object.values(summary.models)) {
-      expect(m.ok).toBe(true);
-      expect(m.status).toBe(200);
-    }
-    expect(fetcher).toHaveBeenCalled();
-    // Verify the probe targets `/chat/completions` and includes the
-    // runtime `provider` block — i.e. it is the runtime-mirroring probe,
-    // not the old `/endpoints` metadata probe.
-    const calls = fetcher.mock.calls as unknown as unknown[][];
-    expect(calls.length).toBeGreaterThan(0);
-    const firstCall = calls[0]!;
-    const url = firstCall[0] as string;
-    expect(typeof url).toBe('string');
-    expect(url).toMatch(/\/chat\/completions$/);
-    const body = firstCall[1] as Record<string, unknown>;
-    expect(body).toHaveProperty('provider');
-    expect(body).toHaveProperty('messages');
-    expect(body).toHaveProperty('max_tokens');
-    const provider = body.provider as Record<string, unknown>;
-    expect(provider.allow_fallbacks).toBe(true);
-    // `require_parameters` intentionally absent — see buildOpenRouterProviderBlock.
-    expect(provider).not.toHaveProperty('require_parameters');
-    expect(['allow', 'deny']).toContain(provider.data_collection);
-    // Headers must match runtime (HTTP-Referer + X-Title).
-    const opts = firstCall[2] as { headers?: Record<string, string> };
-    expect(opts.headers).toBeTruthy();
-    expect(opts.headers!['HTTP-Referer']).toBe('https://researchone.io');
-    expect(opts.headers!['X-Title']).toBe('ResearchOne');
-    expect(opts.headers!.Authorization).toMatch(/^Bearer /);
-  });
-
-  it('reports the affected roles when an OR primary returns 404 "No allowed providers"', async () => {
-    let calls = 0;
-    const fetcher = vi.fn(async (_url: string, body: Record<string, unknown>) => {
-      calls += 1;
-      // Fail only the slug `deepseek/deepseek-v3.2`; everything else passes.
-      if ((body as { model?: string }).model === 'deepseek/deepseek-v3.2') {
-        FAKE_404_NO_ALLOWED();
+  it('never include a preset backup model or any other model', () => {
+    for (const set of preflightRouteSets()) {
+      const preset = V2_MODE_PRESETS[set.objective as keyof typeof V2_MODE_PRESETS][set.role as (typeof REASONING_MODEL_ROLES)[number]];
+      for (const route of set.routes) {
+        expect(isSameModel({ provider: set.routes[0].provider, model: set.model }, route)).toBe(true);
+        if (preset.fallback && preset.fallback !== preset.primary) {
+          expect(isSameModel({ provider: 'openrouter', model: preset.fallback }, route)).toBe(false);
+        }
       }
-      return FAKE_OK_RESPONSE();
-    });
-
-    const summary = await preflightV2OpenRouterModels({ fetcher: fetcher as never, timeoutMs: 1 });
-    expect(calls).toBeGreaterThan(0);
-    expect(summary.ok).toBe(false);
-    expect(summary.hasWarnings).toBe(true);
-    // The failing slug must be flagged with the actual provider
-    // message exposed for the FailureCard.
-    const failing = summary.models['deepseek/deepseek-v3.2'];
-    expect(failing).toBeDefined();
-    expect(failing.ok).toBe(false);
-    expect(failing.status).toBe(404);
-    expect(failing.providerMessage).toMatch(/no allowed providers/i);
-    // At least one (objective, role) pair should be affected, all
-    // pointing at this slug.
-    expect(summary.rolesAffected.length).toBeGreaterThan(0);
-    expect(summary.rolesAffected.every((r) => r.slug === 'deepseek/deepseek-v3.2')).toBe(true);
-  });
-
-  it('skips the probe entirely when OPENROUTER_API_KEY is missing — fetcher is never called', async () => {
-    const orig = config.openrouter.apiKey;
-    (config.openrouter as { apiKey: string }).apiKey = '';
-    try {
-      const fetcher = vi.fn(async () => {
-        throw new Error('should not be called when API key is missing');
-      });
-      const summary = await preflightV2OpenRouterModels({
-        fetcher: fetcher as never,
-        timeoutMs: 1,
-      });
-      expect(fetcher).not.toHaveBeenCalled();
-      expect(summary.skipped).toBe(true);
-      expect(summary.ok).toBe(true);
-      expect(summary.hasWarnings).toBe(false);
-      expect(summary.models).toEqual({});
-      expect(summary.rolesAffected).toEqual([]);
-    } finally {
-      (config.openrouter as { apiKey: string }).apiKey = orig;
     }
   });
 
-  it('honors the disabled flag (used by OPENROUTER_PREFLIGHT=false) — fetcher is never called', async () => {
-    const fetcher = vi.fn(async () => {
-      throw new Error('should not be called when disabled');
-    });
-    const summary = await preflightV2OpenRouterModels({
-      fetcher: fetcher as never,
-      timeoutMs: 1,
-      disabled: true,
-    });
-    expect(fetcher).not.toHaveBeenCalled();
-    expect(summary.skipped).toBe(true);
+  it('cover every research kind and every role', () => {
+    expect(preflightRouteSets()).toHaveLength(RESEARCH_OBJECTIVES.length * REASONING_MODEL_ROLES.length);
+  });
+});
+
+describe('preflightModelRoutes', () => {
+  it('asks each distinct route once and reports ok when every role has a route that answered', async () => {
+    const { probe, asked } = fakeProbe(() => null);
+    const summary = await preflightModelRoutes({ probe });
     expect(summary.ok).toBe(true);
     expect(summary.hasWarnings).toBe(false);
+    expect(summary.rolesWithoutRoute).toEqual([]);
+    const keys = asked.map((target) => `${target.provider}|${target.model}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    // Only providers that serve a role's exact model are asked, whatever keys are set.
+    expect(new Set(asked.map((target) => target.provider))).toEqual(new Set(['openrouter', 'huggingface_inference']));
+    expect(routeState('huggingface_inference', HERMES4_HUB)).toBe('usable');
   });
 
-  it('forwards `data_collection` from config into the probe body (deny case)', async () => {
-    const orig = config.openrouter.dataCollection;
-    (config.openrouter as { dataCollection: string }).dataCollection = 'deny';
-    try {
-      const fetcher = vi.fn(async (..._args: unknown[]) => FAKE_OK_RESPONSE());
-      await preflightV2OpenRouterModels({ fetcher: fetcher as never, timeoutMs: 1 });
-      const calls = fetcher.mock.calls as unknown as unknown[][];
-      expect(calls.length).toBeGreaterThan(0);
-      const body = calls[0]![1] as Record<string, unknown>;
-      const provider = body.provider as Record<string, unknown>;
-      expect(provider.data_collection).toBe('deny');
-    } finally {
-      (config.openrouter as { dataCollection: string }).dataCollection = orig as string;
+  it('names the roles whose exact model has no route that answered, with each route and its reason', async () => {
+    const { probe } = fakeProbe((target) =>
+      target.model === HERMES4 ? 'provider_unavailable' : target.model === HERMES4_HUB ? 'quota_exceeded' : null
+    );
+    const summary = await preflightModelRoutes({ probe });
+    expect(summary.ok).toBe(false);
+    const roles = new Set(summary.rolesWithoutRoute.map((entry) => entry.role));
+    expect(roles).toEqual(new Set(['double_check', 'internal_challenger']));
+    for (const entry of summary.rolesWithoutRoute) {
+      expect(entry.routes).toEqual([
+        { provider: 'openrouter', model: HERMES4, reason: 'provider_unavailable' },
+        { provider: 'huggingface_inference', model: HERMES4_HUB, reason: 'quota_exceeded' },
+      ]);
     }
+    expect(routeState('huggingface_inference', HERMES4_HUB)).toBe('not_usable');
+  });
+
+  it('warns but stays ok when one route of a model refuses and another answers', async () => {
+    const { probe } = fakeProbe((target) => (target.provider === 'openrouter' && target.model !== HERMES4 ? 'quota_exceeded' : null));
+    const summary = await preflightModelRoutes({ probe });
+    expect(summary.ok).toBe(true);
+    expect(summary.hasWarnings).toBe(true);
+  });
+
+  it('records a probe that threw as a route that did not answer, and never throws itself', async () => {
+    const probe = vi.fn(async () => {
+      throw new Error('socket hang up');
+    });
+    const summary = await preflightModelRoutes({ probe });
+    expect(summary.ok).toBe(false);
+    expect(summary.routes.every((route) => !route.ok)).toBe(true);
+  });
+
+  it('asks only the routes of providers that have a key', async () => {
+    config.hfToken = '';
+    const { probe, asked } = fakeProbe(() => null);
+    await preflightModelRoutes({ probe });
+    expect(new Set(asked.map((target) => target.provider))).toEqual(new Set(['openrouter']));
+  });
+
+  it('is skipped when turned off', async () => {
+    const probe = vi.fn();
+    const summary = await preflightModelRoutes({ probe, disabled: true });
+    expect(summary.skipped).toBe(true);
+    expect(probe).not.toHaveBeenCalled();
+    expect(preflightDisabledBySetting('false')).toBe(true);
+    expect(preflightDisabledBySetting('0')).toBe(true);
+    expect(preflightDisabledBySetting(undefined)).toBe(false);
   });
 });

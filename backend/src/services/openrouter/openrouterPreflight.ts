@@ -1,294 +1,198 @@
-import axios from 'axios';
-import { config } from '../../config';
+/**
+ * Startup preflight for model routes (RJ-025 repair).
+ *
+ * The targets are built from the same definitions a research call uses: for
+ * every research kind and every role, the model the research engine chooses
+ * (`resolvePrimaryModelForCall`), and each route that exact model has on this
+ * server (`serverModelRoutes`, built on the table in `providerRoutes.ts`).
+ * A different model is never a target, because a call never moves to one.
+ *
+ * Each distinct route (provider and the id the model has there) is asked once
+ * with the smallest request the provider accepts, through the same request
+ * path the admin health check uses (`probeRoute`), and the outcome is kept in
+ * `routeAvailability.ts`. The run readiness check reads it, so the first
+ * customer run after a deploy does not have to find a broken route itself.
+ *
+ * It never fails startup. A role with no route that answered is logged for an
+ * administrator; the run readiness check stops such a run before any work.
+ *
+ * Cost: one request of at most 5 tokens per distinct route per start. Set
+ * `OPENROUTER_PREFLIGHT=false` to turn it off (the name is kept from when it
+ * only asked OpenRouter, so existing settings keep working).
+ */
 import { logger } from '../../utils/logger';
-import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
-import { isHfRepoModel, REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../reasoning/reasoningModelPolicy';
-import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openrouterProviderBlock';
+import { RESEARCH_ENGINE_VERSION } from '../../config/researchEngine';
+import { REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../reasoning/reasoningModelPolicy';
+import { providerForRoute, resolvePrimaryModelForCall, serverModelRoutes } from './openrouterService';
+import { probeRoute, type ProviderHealthResult, type ProviderHealthTarget } from './providerHealth';
+import { sameModelName, type ModelProviderName } from './providerRoutes';
 
-export interface PreflightModelStatus {
-  slug: string;
+export interface PreflightRouteStatus {
+  provider: ModelProviderName;
+  /** The id the model has on this provider. */
+  model: string;
   ok: boolean;
-  /**
-   * HTTP status from the `/chat/completions` smoke probe, when the
-   * request reached OpenRouter. Absent for transport-layer errors
-   * (DNS, connection refused, etc.).
-   */
-  status?: number;
-  /** Reason this slug is not OK; only present when `ok=false`. */
+  status?: number | null;
+  /** Why the route is not usable; only present when `ok=false`. */
   reason?: string;
-  /**
-   * Provider message extracted from OpenRouter's error body when status
-   * is 4xx/5xx — typically the actionable line such as
-   * `"No allowed providers are available for the selected model"`.
-   */
-  providerMessage?: string;
-  /**
-   * Wall-clock duration of the probe call in ms. Useful for diagnosing
-   * timeout-vs-policy failures in startup logs.
-   */
   durationMs: number;
+}
+
+export interface PreflightRoleWithoutRoute {
+  objective: string;
+  role: string;
+  /** The model the role chose, as the research engine names it. */
+  model: string;
+  modelName: string;
+  /** Every route the model has on this server, none of which answered. */
+  routes: Array<{ provider: ModelProviderName; model: string; reason?: string }>;
 }
 
 export interface PreflightSummary {
   ok: boolean;
-  /** True iff at least one probed slug failed pre-flight, regardless of `ok`. */
+  /** True when at least one route did not answer, even if every role still has one that did. */
   hasWarnings: boolean;
-  /** Per-slug results (deduplicated across roles / objectives). */
-  models: Record<string, PreflightModelStatus>;
-  /**
-   * Roles whose default primary or preset fallback failed (per objective).
-   * Both tiers are now probed because preset fallbacks always fire
-   * automatically on primary failure — an unreachable fallback is a
-   * reliability gap that should surface at deploy time, not at the
-   * second user click. See PR #42 (Copilot review finding).
-   */
-  rolesAffected: Array<{
-    objective: string;
-    role: string;
-    slug: string;
-    reason: string;
-    /** Whether the failing slug was the role's primary or preset fallback. */
-    tier?: 'primary' | 'fallback';
-  }>;
-  /** Wall-clock duration in ms. */
+  /** One entry per distinct route asked. */
+  routes: PreflightRouteStatus[];
+  /** Roles whose model has no route that answered. */
+  rolesWithoutRoute: PreflightRoleWithoutRoute[];
   durationMs: number;
-  /** Whether the probe was skipped wholesale (no API key, or disabled by env). */
+  /** Whether the probe was skipped (turned off by setting). */
   skipped?: boolean;
 }
 
-/**
- * Probe every distinct V2 default OpenRouter slug (both primaries and
- * preset fallbacks) in `V2_MODE_PRESETS` by issuing a 1-token
- * `/chat/completions` request that mirrors `callOpenRouter` exactly:
- *
- *   - same `Authorization` / `HTTP-Referer` / `X-Title` headers
- *   - same `provider` block (`allow_fallbacks`, `data_collection`, `sort`;
- *     `require_parameters` intentionally omitted — see buildOpenRouterProviderBlock)
- *   - same base URL
- *
- * This is the gold-standard reachability gate: a slug that 200s here
- * will 200 at runtime; a slug that 404s with `No allowed providers are
- * available` here will 404 the same way at runtime. Earlier revisions
- * of this probe queried `/models/<slug>/endpoints` for metadata, which
- * **did not** apply the runtime `provider.data_collection` policy and
- * could report a model as reachable even when runtime calls would 404.
- * That is the PR #41 review finding (Codex P1 — 2026-04-28-PM).
- *
- * Both primaries and preset fallbacks are probed: since preset fallbacks
- * now fire automatically on any primary failure, an unreachable fallback
- * is a reliability gap that should surface at deploy time.
- *
- * Cost: each call consumes ~1 completion token per distinct slug per
- * startup. Slugs deduplicated across roles/objectives/tiers. Operators
- * who need to suppress this can set `OPENROUTER_PREFLIGHT=false`.
- *
- * This **does not** fail startup. The orchestrator will still attempt
- * the call at runtime; a pre-flight failure just means the agent has
- * told the operator to expect that role to fail. We never mutate
- * `V2_MODE_PRESETS` from here.
- *
- * Skipped slugs: HF repo ids (route through HF Inference, not OpenRouter)
- * and any slug we cannot reach because OPENROUTER_API_KEY is unset.
- */
-export async function preflightV2OpenRouterModels(args?: {
-  /**
-   * Override `axios.post` (used in tests). Must accept the same
-   * `(url, body, options)` signature.
-   */
-  fetcher?: typeof axios.post;
-  /** Override timeout. */
-  timeoutMs?: number;
-  /** Disable wholesale (used by `OPENROUTER_PREFLIGHT=false`). */
+interface RoleRouteSet {
+  objective: string;
+  role: string;
+  model: string;
+  routes: ProviderHealthTarget[];
+}
+
+/** Every role's routes, per research kind, from the definitions calls use. */
+export function preflightRouteSets(): RoleRouteSet[] {
+  const sets: RoleRouteSet[] = [];
+  for (const objective of RESEARCH_OBJECTIVES) {
+    for (const role of REASONING_MODEL_ROLES) {
+      const model = resolvePrimaryModelForCall({
+        role,
+        messages: [],
+        engineVersion: RESEARCH_ENGINE_VERSION,
+        researchObjective: objective,
+      });
+      sets.push({
+        objective,
+        role,
+        model,
+        routes: serverModelRoutes(role, model).map((route) => ({ provider: providerForRoute(route), model: route.model })),
+      });
+    }
+  }
+  return sets;
+}
+
+function keyOf(target: ProviderHealthTarget): string {
+  return `${target.provider}\u0000${target.model}`;
+}
+
+export async function preflightModelRoutes(args?: {
+  /** Replaced in tests; never a real provider in a test. */
+  probe?: (target: ProviderHealthTarget) => Promise<ProviderHealthResult>;
   disabled?: boolean;
 }): Promise<PreflightSummary> {
   const start = Date.now();
-  const summary: PreflightSummary = {
-    ok: true,
-    hasWarnings: false,
-    models: {},
-    rolesAffected: [],
-    durationMs: 0,
-  };
-
   if (args?.disabled) {
-    summary.skipped = true;
-    summary.durationMs = Date.now() - start;
-    return summary;
+    return { ok: true, hasWarnings: false, routes: [], rolesWithoutRoute: [], durationMs: 0, skipped: true };
   }
+  const probe = args?.probe ?? ((target: ProviderHealthTarget) => probeRoute(target));
+  const sets = preflightRouteSets();
+  const distinct = new Map<string, ProviderHealthTarget>();
+  for (const set of sets) for (const route of set.routes) distinct.set(keyOf(route), route);
 
-  if (!config.openrouter.apiKey?.trim()) {
-    logger.warn('[v2-preflight] OPENROUTER_API_KEY is not set; skipping V2 OpenRouter pre-flight');
-    summary.skipped = true;
-    summary.durationMs = Date.now() - start;
-    return summary;
-  }
-
-  // Collect distinct OpenRouter slugs referenced as primaries OR preset
-  // fallbacks by the V2 default presets, mapped back to the roles /
-  // objectives that use them and which tier they occupy.
-  const slugToRoles = new Map<
-    string,
-    Array<{ objective: string; role: string; tier: 'primary' | 'fallback' }>
-  >();
-  for (const objective of RESEARCH_OBJECTIVES) {
-    const preset = V2_MODE_PRESETS[objective];
-    for (const role of REASONING_MODEL_ROLES) {
-      const entry = preset[role];
-      if (!entry) continue;
-      for (const tier of ['primary', 'fallback'] as const) {
-        const slug = tier === 'primary' ? entry.primary : entry.fallback;
-        if (!slug) continue;
-        if (isHfRepoModel(slug)) continue; // HF repo ids do not go through OR
-        const list = slugToRoles.get(slug) ?? [];
-        list.push({ objective, role, tier });
-        slugToRoles.set(slug, list);
-      }
-    }
-  }
-
-  const fetcher = args?.fetcher ?? axios.post;
-  const timeout = args?.timeoutMs ?? 12000;
-  const baseUrl = config.openrouter.baseUrl.replace(/\/+$/, '');
-  const url = `${baseUrl}/chat/completions`;
-  const provider = buildOpenRouterProviderBlock(config.openrouter.dataCollection);
-  const headers = buildOpenRouterAppHeaders(config.openrouter.apiKey, {
-    // Distinguishes startup smoke-test calls from live research calls in
-    // OpenRouter's generation logs. Prevents operators from mistaking
-    // intentional 1-token probes (finish_reason=length) for real run failures.
-    'X-ResearchOne-Call-Type': 'preflight',
-  });
-
+  const results = new Map<string, ProviderHealthResult>();
   await Promise.all(
-    Array.from(slugToRoles.keys()).map(async (slug) => {
-      const probeStart = Date.now();
-      const body = {
-        model: slug,
-        // Minimal-cost smoke probe. We do not care about the content of the
-        // reply — only that the request envelope is accepted by the
-        // configured account / provider-data-collection policy.
-        messages: [
-          { role: 'system', content: 'preflight' },
-          { role: 'user', content: 'ping' },
-        ],
-        max_tokens: 1,
-        temperature: 0,
-        provider,
-      };
+    Array.from(distinct.entries()).map(async ([key, target]) => {
       try {
-        const res = await fetcher(url, body, { headers, timeout });
-        const status = (res as { status?: number })?.status ?? 200;
-        summary.models[slug] = {
-          slug,
-          ok: status >= 200 && status < 300,
-          status,
-          durationMs: Date.now() - probeStart,
-        };
-        if (!summary.models[slug].ok) {
-          summary.ok = false;
-          summary.hasWarnings = true;
-          for (const r of slugToRoles.get(slug) ?? []) {
-            summary.rolesAffected.push({
-              objective: r.objective,
-              role: r.role,
-              tier: r.tier,
-              slug,
-              reason: `HTTP ${status} on /chat/completions probe`,
-            });
-          }
-        }
+        results.set(key, await probe(target));
       } catch (err) {
-        const e = err as {
-          response?: { status?: number; data?: unknown };
-          message?: string;
-        };
-        const status = e?.response?.status;
-        const data = e?.response?.data as
-          | string
-          | { error?: { message?: string }; message?: string }
-          | undefined;
-        const providerMessage =
-          typeof data === 'string'
-            ? data
-            : data && typeof data === 'object'
-              ? data.error?.message || data.message || ''
-              : '';
-        const baseReason = status ? `HTTP ${status}` : e?.message || 'request failed';
-        const reason = providerMessage ? `${baseReason}: ${providerMessage}` : baseReason;
-        summary.models[slug] = {
-          slug,
+        results.set(key, {
+          ...target,
           ok: false,
-          status,
-          reason,
-          providerMessage: providerMessage || undefined,
-          durationMs: Date.now() - probeStart,
-        };
-        summary.ok = false;
-        summary.hasWarnings = true;
-        for (const r of slugToRoles.get(slug) ?? []) {
-          summary.rolesAffected.push({
-            objective: r.objective,
-            role: r.role,
-            tier: r.tier,
-            slug,
-            reason,
-          });
-        }
+          status: null,
+          durationMs: 0,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     })
   );
 
-  summary.durationMs = Date.now() - start;
-  return summary;
+  const routes: PreflightRouteStatus[] = Array.from(results.values()).map((result) => ({
+    provider: result.provider,
+    model: result.model,
+    ok: result.ok,
+    status: result.status,
+    ...(result.ok ? {} : { reason: result.classification ?? result.error ?? 'refused' }),
+    durationMs: result.durationMs,
+  }));
+
+  const rolesWithoutRoute: PreflightRoleWithoutRoute[] = [];
+  for (const set of sets) {
+    const answered = set.routes.some((route) => results.get(keyOf(route))?.ok === true);
+    if (answered) continue;
+    rolesWithoutRoute.push({
+      objective: set.objective,
+      role: set.role,
+      model: set.model,
+      modelName: sameModelName({ provider: set.routes[0]?.provider ?? 'openrouter', model: set.model }),
+      routes: set.routes.map((route) => {
+        const result = results.get(keyOf(route));
+        return { ...route, ...(result && !result.ok ? { reason: result.classification ?? result.error } : {}) };
+      }),
+    });
+  }
+
+  return {
+    ok: rolesWithoutRoute.length === 0,
+    hasWarnings: routes.some((route) => !route.ok),
+    routes,
+    rolesWithoutRoute,
+    durationMs: Date.now() - start,
+  };
+}
+
+/** Whether `OPENROUTER_PREFLIGHT` turns the preflight off. */
+export function preflightDisabledBySetting(raw: string | undefined = process.env.OPENROUTER_PREFLIGHT): boolean {
+  const value = (raw ?? 'true').trim().toLowerCase();
+  return value === 'false' || value === '0' || value === 'no';
 }
 
 /**
- * Run the pre-flight and log a structured summary. Called at app
- * startup (best-effort, never blocks listen). Honors
- * `OPENROUTER_PREFLIGHT=false` to suppress the probe entirely.
+ * Run the preflight and log a summary. Called at app startup (best-effort,
+ * never blocks listen).
  */
-export async function runV2OpenRouterPreflightAndLog(): Promise<PreflightSummary> {
-  const enabledRaw = (process.env.OPENROUTER_PREFLIGHT ?? 'true').trim().toLowerCase();
-  const disabled = enabledRaw === 'false' || enabledRaw === '0' || enabledRaw === 'no';
-  if (disabled) {
-    logger.info('[v2-preflight] Disabled via OPENROUTER_PREFLIGHT=false');
-    return {
-      ok: true,
-      hasWarnings: false,
-      models: {},
-      rolesAffected: [],
-      durationMs: 0,
-      skipped: true,
-    };
+export async function runModelRoutePreflightAndLog(): Promise<PreflightSummary> {
+  if (preflightDisabledBySetting()) {
+    logger.info('[model-route-preflight] Disabled via OPENROUTER_PREFLIGHT=false');
+    return preflightModelRoutes({ disabled: true });
   }
-
   let summary: PreflightSummary;
   try {
-    summary = await preflightV2OpenRouterModels();
+    summary = await preflightModelRoutes();
   } catch (err) {
-    logger.warn('[v2-preflight] Pre-flight probe failed; continuing without it', err);
-    return {
-      ok: false,
-      hasWarnings: true,
-      models: {},
-      rolesAffected: [],
-      durationMs: 0,
-    };
+    logger.warn('[model-route-preflight] Preflight failed; continuing without it', err);
+    return { ok: false, hasWarnings: true, routes: [], rolesWithoutRoute: [], durationMs: 0 };
   }
-  if (summary.skipped) return summary;
-  if (summary.hasWarnings) {
+  if (summary.rolesWithoutRoute.length > 0) {
     logger.warn(
-      `[v2-preflight] ${summary.rolesAffected.length} role(s) have unreachable default primary or fallback slugs on OpenRouter`,
-      {
-        durationMs: summary.durationMs,
-        rolesAffected: summary.rolesAffected,
-        models: summary.models,
-      }
+      `[model-route-preflight] ${summary.rolesWithoutRoute.length} role/research-kind pair(s) have no route that answered for their exact model; runs that need them will not start`,
+      { durationMs: summary.durationMs, rolesWithoutRoute: summary.rolesWithoutRoute, routes: summary.routes }
     );
+  } else if (summary.hasWarnings) {
+    logger.warn('[model-route-preflight] Some routes did not answer; every role still has one that did', {
+      durationMs: summary.durationMs,
+      routes: summary.routes.filter((route) => !route.ok),
+    });
   } else {
-    const okCount = Object.keys(summary.models).length;
-    logger.info(
-      `[v2-preflight] All ${okCount} V2 default OpenRouter slugs (primaries + fallbacks) reachable in ${summary.durationMs}ms`
-    );
+    logger.info(`[model-route-preflight] All ${summary.routes.length} model routes answered in ${summary.durationMs}ms`);
   }
   return summary;
 }

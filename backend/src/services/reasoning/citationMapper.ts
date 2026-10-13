@@ -123,7 +123,6 @@ export async function mapAndPersistCitations(args: {
   discoverySummary?: Record<string, unknown>;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
   sourceClassMap?: SourceClassMap;
   /** Alias for `sourceClassMap`. */
@@ -170,7 +169,6 @@ export async function mapAndPersistCitations(args: {
       role: 'verifier',
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
-      allowFallbackByRole: args.allowFallbackByRole,
       byokApiKeyOverride: args.byokApiKeyOverride,
       messages: [
         { role: 'system', content: withPreamble(CITATION_MAPPER_PROMPT) },
