@@ -154,6 +154,20 @@ export interface SameModelEntry {
  *   - Claude Sonnet 4.5 is deprecated at Anthropic and is served until
  *     30 Nov 2026. Remove its `anthropic` id on that date.
  *
+ * RECHECKED 13 Oct 2026 for the route gate of Hermes 4 70B, from the same
+ * public sources, no key and no model call: OpenRouter still returns
+ * `nousresearch/hermes-4-70b` with `endpoints: []` and leaves it out of its
+ * model list (463 models); Hugging Face lists one live host for
+ * `NousResearch/Hermes-4-70B` (featherless-ai); Together's serverless list and
+ * NVIDIA NIM's model list (80 models) do not include it. Hugging Face Inference
+ * is still the only verified route. The other four models each still have
+ * OpenRouter endpoints and at least one live Hugging Face host.
+ *
+ * Exact version, not exact numerics: the hosts behind OpenRouter and Hugging
+ * Face serve the same weights at different precisions (OpenRouter lists bf16,
+ * fp8 and fp4 hosts for these models). This table pins the model and its
+ * version; it does not pin a host's precision.
+ *
  * A model that is not in this table is served by the one provider its id
  * belongs to, and has no other route.
  *

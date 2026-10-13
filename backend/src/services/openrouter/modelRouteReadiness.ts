@@ -14,9 +14,21 @@
  * nothing is known about is asked once, with the smallest request a provider
  * accepts (`probeRoute`), and the answer is kept for later runs.
  *
- * A run whose caller brought their own OpenRouter key is not probed: a probe
- * would be charged to their account. For such a run a route counts when the
- * provider table confirms OpenRouter serves the exact model.
+ * A route nothing is known about is probed with a real model request, so it is
+ * charged by the provider like any request (at most 5 output tokens, once per
+ * route per 30 minutes per server process, and only when no call or probe has
+ * answered on that route in that time). `OPENROUTER_PREFLIGHT=false` turns off
+ * the startup preflight only, not this check.
+ *
+ * A run whose caller brought their own OpenRouter key is never probed: a probe
+ * would be charged to their account. For such a run the key and the exact
+ * model id are checked with OpenRouter's free account and catalog endpoints
+ * (`openrouterAccountDiagnostics.ts`). A route that passes is `unverified`:
+ * the key is accepted and OpenRouter lists a host for the model, but no model
+ * request has proved it. An unverified route lets the run start; a key that is
+ * refused, a spending limit that is used up, or a model OpenRouter lists no
+ * host for stops the run here. A matching row in the provider table is never
+ * enough on its own.
  *
  * When a required stage has no usable route the run stops here, before any
  * model call, with a plain sentence and no charge (`ModelRoutesUnavailableError`).
@@ -32,8 +44,9 @@ import {
   type ModelRoute,
 } from './openrouterService';
 import { probeRoute, type ProviderHealthResult, type ProviderHealthTarget } from './providerHealth';
-import { providersServingModel, sameModelName, type ModelProviderName } from './providerRoutes';
+import { sameModelName, type ModelProviderName } from './providerRoutes';
 import { routeAvailability, type RouteState } from './routeAvailability';
+import { openRouterDiagnostics, type OpenRouterDiagnostics } from './openrouterAccountDiagnostics';
 
 /**
  * The stages every research run waits on. If any of these has no usable
@@ -65,8 +78,13 @@ export interface RouteReadiness {
   provider: ModelProviderName;
   /** The id the model has on this provider. */
   model: string;
-  state: RouteState;
-  /** Why the route was last refused, when it was. */
+  /**
+   * `usable`: answered recently. `not_usable`: refused, or ruled out by a check.
+   * `unknown`: nothing is known. `unverified`: a caller's own key passed the free
+   * account and catalog checks, but no request has proved the route.
+   */
+  state: RouteState | 'unverified';
+  /** Why the route was refused or ruled out, or what was checked when it is unverified. */
   reason?: string;
 }
 
@@ -77,11 +95,16 @@ export interface StageReadiness {
   /** The model's name in the provider table. */
   modelName: string;
   routes: RouteReadiness[];
+  /** True when the run may start this stage: a route is usable, or (own key only) unverified. */
   usable: boolean;
+  /** True only when a route has actually answered. */
+  verified: boolean;
 }
 
 export interface RunReadiness {
   ready: boolean;
+  /** True only when every stage has a route that has actually answered. */
+  verified: boolean;
   stages: StageReadiness[];
   /** The stages with no usable route. */
   unavailable: StageReadiness[];
@@ -92,8 +115,10 @@ export interface RunReadinessArgs {
   researchObjective?: ResearchObjective | null;
   /** The run's own model choice per role, as `callRoleModel` receives it. */
   runtimeOverrideFor?: (role: ReasoningModelRole) => { primary?: string } | undefined;
-  /** True when the run uses the caller's own OpenRouter key. */
-  byok?: boolean;
+  /** The caller's own OpenRouter key, when the run uses one. Sent only to OpenRouter's free checks. */
+  byokApiKey?: string;
+  /** Replaced in tests. */
+  openRouterChecks?: OpenRouterDiagnostics;
   /** Replaced in tests. */
   probe?: (target: ProviderHealthTarget) => Promise<ProviderHealthResult>;
   roles?: readonly ReasoningModelRole[];
@@ -139,19 +164,13 @@ function routeKey(target: ProviderHealthTarget): string {
   return `${target.provider}\u0000${target.model}`;
 }
 
-/** For a caller's own key: whether the table confirms OpenRouter serves this exact id. */
-function confirmedOnOpenRouter(model: string): boolean {
-  return providersServingModel({ provider: 'openrouter', model }).some(
-    (served) => served.provider === 'openrouter' && served.model === model.trim()
-  );
-}
-
 /**
  * Check every required stage. Probes each route nothing is known about, once,
  * side by side. Never throws for a refusal: the answer is in the result.
  */
 export async function checkRunModelReadiness(args: RunReadinessArgs): Promise<RunReadiness> {
-  const byok = args.byok === true;
+  const byokKey = args.byokApiKey?.trim() || '';
+  const byok = byokKey.length > 0;
   const probe = args.probe ?? ((target: ProviderHealthTarget) => probeRoute(target));
   const calls = stageCalls(args);
   const routesByCall = calls.map((call) => ({
@@ -183,17 +202,11 @@ export async function checkRunModelReadiness(args: RunReadinessArgs): Promise<Ru
     );
   }
 
+  const ownKeyRoute = byok ? await checkOwnKeyRoutes(byokKey, routesByCall, args.openRouterChecks ?? openRouterDiagnostics()) : null;
+
   const stages: StageReadiness[] = routesByCall.map((call) => {
     const routes: RouteReadiness[] = call.routes.map((target) => {
-      if (byok) {
-        return {
-          ...target,
-          state: target.provider === 'openrouter' && confirmedOnOpenRouter(target.model) ? 'usable' : 'not_usable',
-          ...(target.provider === 'openrouter' && !confirmedOnOpenRouter(target.model)
-            ? { reason: 'not_confirmed_on_provider' }
-            : {}),
-        };
-      }
+      if (ownKeyRoute) return ownKeyRoute(target);
       const record = routeAvailability(target.provider, target.model);
       return { ...target, state: record?.state ?? 'unknown', ...(record?.reason ? { reason: record.reason } : {}) };
     });
@@ -202,11 +215,49 @@ export async function checkRunModelReadiness(args: RunReadinessArgs): Promise<Ru
       model: call.model,
       modelName: sameModelName({ provider: routes[0]?.provider ?? 'openrouter', model: call.model }),
       routes,
-      usable: routes.some((route) => route.state === 'usable'),
+      usable: routes.some((route) => route.state === 'usable' || route.state === 'unverified'),
+      verified: routes.some((route) => route.state === 'usable'),
     };
   });
   const unavailable = stages.filter((stage) => !stage.usable);
-  return { ready: unavailable.length === 0, stages, unavailable };
+  return { ready: unavailable.length === 0, verified: stages.every((stage) => stage.verified), stages, unavailable };
+}
+
+/**
+ * For a run on a caller's own key: check the key once and each OpenRouter
+ * model id once, with no model request, and return how each route reads.
+ */
+async function checkOwnKeyRoutes(
+  apiKey: string,
+  routesByCall: Array<{ routes: ProviderHealthTarget[] }>,
+  checks: OpenRouterDiagnostics
+): Promise<(target: ProviderHealthTarget) => RouteReadiness> {
+  const models = new Set<string>();
+  for (const call of routesByCall) {
+    for (const target of call.routes) if (target.provider === 'openrouter') models.add(target.model);
+  }
+  const [keyStatus, ...listed] = await Promise.all([
+    checks.checkKey(apiKey),
+    ...Array.from(models).map((model) => checks.modelListed(model)),
+  ]);
+  const listing = new Map(Array.from(models).map((model, index) => [model, listed[index]]));
+  return (target) => {
+    // A caller's own key reaches OpenRouter only (see `serverModelRoutes`).
+    if (target.provider !== 'openrouter') return { ...target, state: 'not_usable', reason: 'not_available_on_own_key' };
+    if (keyStatus === 'rejected') return { ...target, state: 'not_usable', reason: 'auth_error' };
+    if (keyStatus === 'no_credit') return { ...target, state: 'not_usable', reason: 'quota_exceeded' };
+    const catalog = listing.get(target.model) ?? 'unknown';
+    if (catalog === 'not_listed') return { ...target, state: 'not_usable', reason: 'endpoint_not_found' };
+    const checked =
+      keyStatus === 'accepted' && catalog === 'listed'
+        ? 'key_accepted_and_model_listed'
+        : keyStatus === 'accepted'
+          ? 'key_accepted_catalog_check_unavailable'
+          : catalog === 'listed'
+            ? 'model_listed_key_check_unavailable'
+            : 'account_and_catalog_checks_unavailable';
+    return { ...target, state: 'unverified', reason: checked };
+  };
 }
 
 /** The classification a run that could not start for this reason is stored with. */

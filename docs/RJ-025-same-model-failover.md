@@ -106,7 +106,8 @@ Ordered as ECHO-PR-20261013-R1 after review of the first commit. Every model a s
 ### One definition for calls, the preflight and the readiness check
 
 - `serverModelRoutes` (`openrouterService.ts`) gives the routes a call has on this server. `callRoleModel`, the startup preflight and the run readiness check all use it, over the same table.
-- **Startup preflight** (`openrouterPreflight.ts`): for every kind of research and every role, the exact model the research engine chooses and each of its routes. Each distinct route is asked once with a request of at most 5 tokens, through `probeRoute`, the request the admin health check sends (now with OpenRouter's provider block, as a research call has). The answers are kept. Each role whose model has no route that answered is logged. Preset backup models are no longer probed. `OPENROUTER_PREFLIGHT=false` still turns it off.
+- **Startup preflight** (`openrouterPreflight.ts`): for every kind of research and every role, the exact model the research engine chooses and each of its routes. Each distinct route is asked once with a request of at most 5 tokens, through `probeRoute`, the request the admin health check sends (now with OpenRouter's provider block, as a research call has). The answers are kept. Each role whose model has no route that answered is logged. Preset backup models are no longer probed.
+- **Provider cost of probes.** Each probe is a real model request on the server's provider account, billed by that provider (a one-line prompt, an answer of at most 5 tokens). The preflight sends them automatically on every process start, one per distinct route: with the presets of 13 Oct 2026, 5 on OpenRouter plus 5 on Hugging Face Inference when `HF_TOKEN` is set. `OPENROUTER_PREFLIGHT=false` (or `0`, `no`) turns the preflight off. It does not turn off the run readiness check, which probes a route the same way when nothing has answered on it in the last 30 minutes in that process (at most one probe per route per 30 minutes; real calls that answer keep the record fresh).
 
 ### Required stages are checked before customer work
 
@@ -114,7 +115,7 @@ Ordered as ECHO-PR-20261013-R1 after review of the first commit. Every model a s
 - A route nothing is known about is asked once; the answer is kept for later runs.
 - When a stage has no usable route, the run stops with classification `no_usable_model_route`. `failure_meta.unavailableStages` lists each such stage, its model and each route's state, for administrators. The customer reads: "This run did not start because the AI model one of its steps needs cannot be reached from any of our providers right now. We do not swap in a different model. You have not been charged. Press Run it again to try again; you are only charged once, when a report is delivered."
 - Billing is unchanged: a run is charged only when it finishes with a report. The failure is retryable, so the hold is kept for a run again and released if the run is stopped for good.
-- A run on a caller's own key is not probed (the probe would be charged to them). For it a route counts only when the table confirms OpenRouter serves the exact id.
+- A run on a caller's own key is never probed (the probe would be charged to them). `openrouterAccountDiagnostics.ts` checks the key with `GET /api/v1/key` (accepted, refused, or spending limit used up) and each exact OpenRouter id with `GET /api/v1/models/<id>/endpoints` (a host listed or not). Neither sends a model request. A refused key, a used-up limit or an unlisted model stops the run before any work. A route that passes is `unverified`, not usable: the run may start, and `verified: false` is reported. A matching row in the provider table, including the case of an id the table does not know, is never counted on its own.
 
 ### Backup-model controls removed; obsolete inputs refused
 
@@ -134,3 +135,15 @@ Ordered as ECHO-PR-20261013-R1 after review of the first commit. Every model a s
 - New: `rj025RouteReadiness.test.ts`: exact-model routes across providers for every required stage; a key alone not counted; one probe, kept, asked again when too old; out-of-credit routes on every provider; one provider with allowance enough; Hugging Face 402; the Hermes single-provider case with and without a token; no probe on a caller's own key; a call skipping a refused route and asking all when all are refused; the failure stored, the customer sentence, the hold kept and nothing charged; the check placed before the first stage; obsolete inputs refused; a follow-up request and the presets carrying one model per role.
 - Rewritten: `openrouterPreflight.test.ts`.
 - Changed: `providerCallPricing.test.ts` (unknown stays unknown), `researchEnsemblePresets.test.ts`, `resolveReasoningModels.test.ts`, `reportQualityJudge.test.ts`, `evalRunner.test.ts`, the request form's test, and test files that passed `allowFallbackByRole`.
+
+### Recheck of 13 Oct 2026 (no inference)
+
+| Model | OpenRouter (`/models`, `/models/<id>/endpoints`) | Hugging Face (`inferenceProviderMapping`) | Together serverless docs | NVIDIA NIM `/v1/models` |
+|---|---|---|---|---|
+| Hermes 4 70B | id known, `endpoints: []`, not in the list of 463 | featherless-ai live | not listed | not listed |
+| Kimi K2 Thinking | 2 endpoints (Google, Novita bf16) | featherless-ai live; novita error | not listed | not listed |
+| Qwen3-235B-A22B-Thinking-2507 | 1 endpoint (Venice fp8) | featherless-ai, deepinfra live; novita error | not listed | not listed |
+| DeepSeek R1-0528 | 4 endpoints (fp4/fp8 hosts) | novita, featherless-ai, deepinfra live | not listed | not listed |
+| DeepSeek V3.2 | 12 endpoints | deepinfra live; novita, featherless-ai error | not listed | not listed |
+
+Together's `GET /v1/models` answers 401 without a key, so its published serverless list was read. Hugging Face Inference is still the only verified route for Hermes 4 70B; the remaining gate is an `HF_TOKEN` with Inference Providers allowance for that host. The table pins the model and version, not a host's precision.

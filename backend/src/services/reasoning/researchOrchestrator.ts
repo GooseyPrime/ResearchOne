@@ -1093,7 +1093,7 @@ async function runResearchJobInner(
       engineVersion,
       researchObjective,
       runtimeOverrideFor: (role) => runtimeOverrideForRole(runModelOverrides, role),
-      byok: Boolean(byokApiKeyOverride),
+      byokApiKey: byokApiKeyOverride,
     });
 
     // ────────────────────────────────────────────────────────────────

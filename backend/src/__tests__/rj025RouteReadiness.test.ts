@@ -98,6 +98,12 @@ import {
   REQUIRED_RESEARCH_RUN_ROLES,
 } from '../services/openrouter/modelRouteReadiness';
 import { PROVIDER_HEALTH_MAX_TOKENS, probeRoute } from '../services/openrouter/providerHealth';
+import {
+  openRouterDiagnostics,
+  type OpenRouterCatalogStatus,
+  type OpenRouterDiagnostics,
+  type OpenRouterKeyStatus,
+} from '../services/openrouter/openrouterAccountDiagnostics';
 import { isSameModel, type ModelProviderName } from '../services/openrouter/providerRoutes';
 import {
   recordRouteAnswered,
@@ -291,12 +297,91 @@ describe('a stage whose model only one provider serves (Hermes 4 70B)', () => {
 });
 
 describe('a run with the caller own OpenRouter key', () => {
-  it('sends no probe (it would be charged to them) and counts only an OpenRouter id the table confirms', async () => {
-    const readiness = await checkRunModelReadiness({ ...research, byok: true });
+  /** OpenRouter's free checks, answered from a table; records what was asked. */
+  function ownKeyChecks(keyStatus: OpenRouterKeyStatus, listed: (model: string) => OpenRouterCatalogStatus) {
+    const asked = { keys: [] as string[], models: [] as string[] };
+    const checks: OpenRouterDiagnostics = {
+      checkKey: async (key) => {
+        asked.keys.push(key);
+        return keyStatus;
+      },
+      modelListed: async (model) => {
+        asked.models.push(model);
+        return listed(model);
+      },
+    };
+    return { checks, asked };
+  }
+  // What OpenRouter's catalog showed on 13 Oct 2026: no host for Hermes 4 70B.
+  const catalog13Oct = (model: string): OpenRouterCatalogStatus => (model === HERMES4 ? 'not_listed' : 'listed');
+
+  it('sends no model request (it would be charged to them) and never calls a route usable from the table alone', async () => {
+    const { checks, asked } = ownKeyChecks('accepted', catalog13Oct);
+    const readiness = await checkRunModelReadiness({ ...research, byokApiKey: 'customer-key', openRouterChecks: checks });
     expect(h.sent).toEqual([]);
-    expect(readiness.unavailable.map((stage) => stage.role)).toEqual(['double_check']);
+    expect(asked.keys).toEqual(['customer-key']);
+    expect(readiness.verified).toBe(false);
     const verifier = readiness.stages.find((stage) => stage.role === 'verifier');
-    expect(verifier?.routes).toEqual([{ provider: 'openrouter', model: V32, state: 'usable' }]);
+    expect(verifier?.routes).toEqual([{ provider: 'openrouter', model: V32, state: 'unverified', reason: 'key_accepted_and_model_listed' }]);
+    expect(verifier).toMatchObject({ usable: true, verified: false });
+    // Hermes 4 70B has no OpenRouter host, so Double-check cannot start on such a key.
+    expect(readiness.unavailable.map((stage) => stage.role)).toEqual(['double_check']);
+    expect(readiness.unavailable[0].routes).toEqual([{ provider: 'openrouter', model: HERMES4, state: 'not_usable', reason: 'endpoint_not_found' }]);
+  });
+
+  it('checks an id the provider table does not know against the catalog, instead of trusting it', async () => {
+    const unknownId = 'vendor/not-in-the-table';
+    const { checks, asked } = ownKeyChecks('accepted', (model) => (model === unknownId ? 'not_listed' : 'listed'));
+    const readiness = await checkRunModelReadiness({
+      ...research,
+      roles: ['verifier'],
+      runtimeOverrideFor: () => ({ primary: unknownId }),
+      byokApiKey: 'customer-key',
+      openRouterChecks: checks,
+    });
+    expect(asked.models).toEqual([unknownId]);
+    expect(readiness.ready).toBe(false);
+    expect(readiness.unavailable[0].routes).toEqual([{ provider: 'openrouter', model: unknownId, state: 'not_usable', reason: 'endpoint_not_found' }]);
+  });
+
+  it('stops before any work when the key is refused or its spending limit is used up', async () => {
+    for (const [status, reason] of [['rejected', 'auth_error'], ['no_credit', 'quota_exceeded']] as const) {
+      const { checks } = ownKeyChecks(status, () => 'listed');
+      const err = await assertRunModelRoutesReady({ ...research, byokApiKey: 'customer-key', openRouterChecks: checks }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ModelRoutesUnavailableError);
+      const stages = (err as ModelRoutesUnavailableError).failureMeta.unavailableStages as Array<{ routes: Array<{ reason?: string }> }>;
+      expect(stages).toHaveLength(REQUIRED_RESEARCH_RUN_ROLES.length);
+      expect(stages.every((stage) => stage.routes.every((route) => route.reason === reason))).toBe(true);
+    }
+    expect(h.sent).toEqual([]);
+  });
+
+  it('reports a route as unverified, not usable, when the free checks could not be made', async () => {
+    const { checks } = ownKeyChecks('unknown', () => 'unknown');
+    const readiness = await checkRunModelReadiness({ ...research, roles: ['verifier'], byokApiKey: 'customer-key', openRouterChecks: checks });
+    expect(readiness.stages[0].routes[0]).toMatchObject({ state: 'unverified', reason: 'account_and_catalog_checks_unavailable' });
+    expect(readiness).toMatchObject({ ready: true, verified: false });
+  });
+
+  it('reads OpenRouter key and catalog answers without any model request', async () => {
+    const get = vi.fn(async (url: string) => {
+      if (url.endsWith('/key')) return { status: 200, data: { data: { limit: 10, limit_remaining: 0 } } };
+      if (url.includes(`/models/${HERMES4}/endpoints`)) return { status: 200, data: { data: { id: HERMES4, endpoints: [] } } };
+      return { status: 200, data: { data: { endpoints: [{ provider_name: 'X' }] } } };
+    });
+    const checks = openRouterDiagnostics(get);
+    expect(await checks.checkKey('customer-key')).toBe('no_credit');
+    expect(await checks.modelListed(HERMES4)).toBe('not_listed');
+    expect(await checks.modelListed(V32)).toBe('listed');
+    const rejected = openRouterDiagnostics(async () => {
+      throw Object.assign(new Error('401'), { response: { status: 401 } });
+    });
+    expect(await rejected.checkKey('bad')).toBe('rejected');
+    const noLimit = openRouterDiagnostics(async () => ({ status: 200, data: { data: { limit: null, limit_remaining: null } } }));
+    expect(await noLimit.checkKey('customer-key')).toBe('accepted');
+    // Only GET requests were made: nothing went to a chat endpoint.
+    expect(get.mock.calls.every(([url]) => !String(url).includes('chat/completions'))).toBe(true);
+    expect(h.sent).toEqual([]);
   });
 });
 

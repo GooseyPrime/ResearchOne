@@ -16,9 +16,17 @@
  * It never fails startup. A role with no route that answered is logged for an
  * administrator; the run readiness check stops such a run before any work.
  *
- * Cost: one request of at most 5 tokens per distinct route per start. Set
- * `OPENROUTER_PREFLIGHT=false` to turn it off (the name is kept from when it
- * only asked OpenRouter, so existing settings keep working).
+ * Cost. Every probe is a real model request on the server's own provider
+ * account, billed by that provider: a one-line prompt and an answer of at most
+ * 5 tokens. One per distinct route, on every process start, automatically.
+ * With the presets of 13 Oct 2026 that is 5 OpenRouter requests, plus 5
+ * Hugging Face Inference requests when `HF_TOKEN` is set (10 at most). A
+ * route with no host (Hermes 4 70B on OpenRouter) is refused before any model
+ * runs. Set `OPENROUTER_PREFLIGHT=false` (also `0` or `no`) to turn it off; the
+ * name is kept from when it only asked OpenRouter, so existing settings keep
+ * working. Turning it off does not turn off the run readiness check
+ * (`modelRouteReadiness.ts`), which probes a route itself, the same way, when
+ * nothing has answered on it in the last 30 minutes.
  */
 import { logger } from '../../utils/logger';
 import { RESEARCH_ENGINE_VERSION } from '../../config/researchEngine';
