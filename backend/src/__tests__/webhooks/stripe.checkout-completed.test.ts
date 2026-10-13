@@ -27,7 +27,7 @@ vi.mock('../../config', () => ({
   },
 }));
 vi.mock('../../utils/logger', () => ({
-  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('stripe', () => ({
   default: class MockStripe {
@@ -270,6 +270,10 @@ describe('stripe webhook checkout.session.completed', () => {
     await layer!(req, res, vi.fn() as NextFunction);
 
     expect(res.status).toHaveBeenCalledWith(200);
+    // A price this deployment does not sell is another product's sale:
+    // acknowledged, nothing stored.
+    expect(res.json).toHaveBeenCalledWith({ status: 'ignored' });
+    expect(query).not.toHaveBeenCalled();
     expect(withTransaction).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,10 @@
 # ResearchOne upgrade: instructions for the coding agent
 
-Version: 8 Oct 2026, revision 8. Supersedes every earlier copy of this document. Use this document only.
+Version: 10 Oct 2026, revision 9. Supersedes every earlier copy of this document. Use this document only.
 
 **This file is the working copy.** It lives in the repository at `docs/UPGRADE_PLAN.md`. Whoever completes a slice, records a decision from Brandon, or finds a fact in section 5 that is no longer true updates this file in the same pull request. Do not keep a private copy and do not work from a pasted one.
+
+**What changed in revision 9 (10 Oct 2026). Section 0 brought up to date.** No behaviour changed in this revision. Section 0 now matches the merged pull requests up to #280: slice 7 is merged, the work merged after it is listed, and the open work on backups (RJ-025) is marked in progress. Section 6 gains invariant 16, Brandon's rule that a backup is the same model on another provider, and a note on invariant 10. Section 8 gains "Where measurement stands". Section 9 gains records for RJ-024 and RJ-025 and a note under each of the two provider fixes of 9 Oct.
 
 **What changed in revision 8 (8 Oct 2026). The plain report is permanent; the old layout is removed.** Brandon's order of 8 Oct 2026 (grant L in section 7): every report, for every request and every report type, is the section 2a report, and the old layout is removed from the code, not switched off. `BASELINE_LAYER_ENABLED`, `CITATION_LOCK_ENABLED` and `READER_VIEW_ENABLED` no longer exist; no environment value and no per-run override changes what a report looks like. This overrides, for the report layout only, the rule that new behaviour stays behind a switch (S1, S2, invariant 13). See "Plain report only" at the end of section 0, the new rows in section 5, and invariants 13 to 15.
 
@@ -12,7 +14,7 @@ Version: 8 Oct 2026, revision 8. Supersedes every earlier copy of this document.
 
 **What changed in revision 5.** A report must read like a well-written encyclopedia entry or review article, as good as or better than the strongest deep-research products. Section 2a defines that standard and every slice serves it. Slices 3 to 10 were rewritten around it and section 8 gained reader-quality scores.
 Repo: `GooseyPrime/ResearchOne` (public, MIT). Default branch `main`.
-Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 2026, the rows marked (rev 5) against `40dd588`, and the rows marked (rev 6) against the merge of PR #245. If you find one that is no longer true, stop and report it before building on it.
+Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 2026, the rows marked (rev 5) against `40dd588`, and the rows marked (rev 6) against the merge of PR #245. If you find one that is no longer true, stop and report it before building on it. (Rev 9: that sentence covers the facts of revisions 5 and 6. The pull request numbers and merge dates added to section 0 in revision 9 were read from the repository's pull request list on 10 Oct 2026. The measurement facts in sections 0 and 8 are as the coordinator reported them and were not checked against the database for this revision.)
 
 ---
 
@@ -38,14 +40,24 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 5, part 4. App wording and the gate | Done | PR #259. Item 8. See "Built in part 4" under slice 5. |
 | Slice 6, part 1. Tier rules and the stored tier | Done | PR #260, with the last review's findings closed in a follow-up pull request. Behind `AUTHORITY_TIERS_ENABLED`, unset by default. See "Delivered in parts" under slice 6. |
 | Slice 6, parts 2 and 3. Retrieval order, the writer's instruction, source type in words, the harness measure | Done | PR #262. Same switch. Production confirmed healthy 8 Oct 2026. See "Built in part 2" and "Built in part 3" under slice 6. |
-| Slice 7. Provider routing by request | Built, in review | One pull request. Behind `PROVIDER_ROUTING_ENABLED`, unset by default. See "As built" under slice 7. |
-| Plain report only | Done, 8 Oct 2026 | One pull request (`rj-016-plain-reports-only`). Not behind a switch, by grant L. See "Plain report only" below. |
-| Plain names for the checking steps and for everything a customer chooses | Done, 9 Oct 2026 | One pull request (`rj-017-plain-names`). Not behind a switch. See "Plain names" below. |
-| Live check fixes: old titles and labels, the run page, the plan, confirming once | In review, 9 Oct 2026 | One pull request (`rj-018-live-check-fixes`). Not behind a switch. See "Live check fixes" below. |
-| A provider that refuses must not end a run: other providers, a plain failure sentence, no charge | In review, 9 Oct 2026 | One pull request (`rj-019-provider-fallback`). Not behind a switch. See "Fix outside the slices, 9 Oct 2026" below. |
-| Two more AI providers for every role (Anthropic direct, NVIDIA NIM) and a setting for the order | In review, 9 Oct 2026 | One pull request (`rj-021-more-providers`). Not behind a switch; a provider with no key is left out. See "Fix outside the slices, 9 Oct 2026. Two more providers" below. |
-| Slices 8 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
-| Fix outside the slices. Sources must be about the question | In review | One pull request, 8 Oct 2026, ordered by Brandon. On by default; `DISCOVERY_RELEVANCE_GATE_ENABLED=false` turns it off in an emergency. See "Fix outside the slices, 8 Oct 2026" after slice 7, and grant M. |
+| Slice 7. Provider routing by request | Done | PR #265, merged 8 Oct 2026. Behind `PROVIDER_ROUTING_ENABLED`, unset by default. See "As built" under slice 7. |
+| Plain report only | Done | PR #270 (`rj-016-plain-reports-only`), merged 9 Oct 2026. Not behind a switch, by grant L. See "Plain report only" below. |
+| Plain names for the checking steps and for everything a customer chooses | Done | PR #272 (`rj-017-plain-names`), merged 9 Oct 2026. Not behind a switch. See "Plain names" below. |
+| Live check fixes: old titles and labels, the run page, the plan, confirming once | Done | PR #273 (`rj-018-live-check-fixes`), merged 9 Oct 2026. Not behind a switch. See "Live check fixes" below. |
+| A provider that refuses must not end a run: other providers, a plain failure sentence, no charge | Done | PR #274 (`rj-019-provider-fallback`), merged 9 Oct 2026. Not behind a switch. Which backups a call may use has changed since: see "As built" under "Fix outside the slices, 9 Oct 2026" below. |
+| Two more AI providers for every role (Anthropic direct, NVIDIA NIM) and a setting for the order | Done | PR #276 (`rj-021-more-providers`), merged 9 Oct 2026. Not behind a switch; a provider with no key is left out. See "Fix outside the slices, 9 Oct 2026. Two more providers" below. |
+| Fix outside the slices. Sources must be about the question | Done | PR #271 (RJ-015), merged 9 Oct 2026, ordered by Brandon. On by default; `DISCOVERY_RELEVANCE_GATE_ENABLED=false` turns it off in an emergency. See "Fix outside the slices, 8 Oct 2026" after slice 7, and grant M. |
+| Pricing page: every listed price has a way to buy it or says "Not yet available" | Done | PR #266, merged 8 Oct 2026. |
+| Subscribers switch between Pro and BYOK in place (RJ-011) | Done | PR #267, merged 8 Oct 2026. |
+| Progress and status text in plain words (RJ-013) | Done | PR #268, merged 9 Oct 2026. Covers the progress and status text of the app. The marketing pages still print code-style subtitles under the step cards; see "Seen and not changed here" under "Live check fixes" below. |
+| Team, Sovereign, Enterprise and seat offers removed; a plan switch starts with the next billing cycle (RJ-012) | Done | PR #269, merged 9 Oct 2026. |
+| Every user's information and activity is private: sockets, routes, library (RJ-020) | Done | PR #275, merged 9 Oct 2026. |
+| The failed-run page does less work when it opens, also with many sources (RJ-022, RJ-022B) | Merged; cause of the freeze not confirmed | PRs #277 (merged 9 Oct 2026) and #278 (merged 10 Oct 2026). Both pull requests say the reported freeze was not reproduced, so neither is a statement that it is fixed. |
+| Analytics on sign-up, onboarding and purchase; plain plan banner (RJ-023) | Done | PR #279, merged 10 Oct 2026. |
+| Together backups that run, the Anthropic workspace header, an admin provider health check (RJ-024) | Done | PR #280, merged 10 Oct 2026. Record in `docs/RJ-024-together-anthropic-health.md`. See "Fix outside the slices, 10 Oct 2026. Together, the Anthropic header, a health check" before slice 8. |
+| A backup is the same model on another provider; no different-model backups (RJ-025) | In progress, 10 Oct 2026 | PR #281 (`rj-025-same-model-failover`), open, not merged. Brandon's rule is invariant 16. Until it merges, `main` still moves a refused call to different models. See "Fix outside the slices, 10 Oct 2026. A backup is the same model" before slice 8. |
+| Measurement | Full harness never run | `eval_results` holds three single-task sample rows (2 Oct, 8 Oct and 9 Oct 2026). The 30-task harness has never been run. No reference reports exist and `EVAL_REFERENCE_DIR` is not set, so `pairwise_vs_reference` has never been scored. See "Where measurement stands" in section 8. |
+| Slices 8 to 10 (Challenge layer; research tree and outline operations; calculated numbers) | Not started | Next step: a full harness run on current `main`, which needs Brandon's yes to the cost first (section 8). Slice 8 does not start before that run is reported (section 3, S6). If RJ-025 merges first, the run is made on `main` after it; a run made before it merges is made again afterwards, because RJ-025 changes which model answers when a provider refuses. |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
@@ -85,7 +97,9 @@ Do not redo a completed phase. Their sections below are kept as the record.
 - **Seen and not changed here.** Run progress is sent to the run's own channel and also to every connected page (`emit` in `queue/workers.ts`); pages keep only their own run's events, and narrowing the broadcast needs a check of what the dashboard listens for. The marketing pages still print code-style subtitles under the step cards ("QUERY_PARSE · OBJECTIVE_MAP"). Both are for a later pull request.
 - **Slices 8 to 10.** A new step a customer can see needs a `run_step` entry in the same pull request. Report text sent to a reader goes through `presentForReader`; text quoted anywhere else goes through `stripReportLabels`. A progress event carries the server's time and a percentage, or it is a notice and is not shown as a step.
 
-**Your task now:** read this whole document again; revision 8 changed sections 0, 4, 5, 6 and 7. The report layout is no longer switched (grant L). Slice 6 is built behind `AUTHORITY_TIERS_ENABLED`; turning it on for customers is Brandon's decision (S4). Slice 7 is in review as one pull request. From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move.
+**Your task now:** read this whole document again; revision 9 changed sections 0, 6, 8 and 9. Slices 1 to 7 are merged. Slices 8 (Challenge layer), 9 (research tree and outline operations) and 10 (calculated numbers) are not started. Do not start slice 8 yet. The next step is a full harness run on current `main` (section 8): the 30-task harness has never been run, so there are no scores to compare a slice against. A full run costs real money, so give Brandon the estimated cost and wait for his yes. If RJ-025 (pull request #281) is still open, ask Brandon whether to wait for it: it changes which model answers when a provider refuses, so scores taken before it merges have to be taken again after. Report the scores to him, then start slice 8 only if S6 allows it. RJ-025 (pull request #281) is open and changes which backups a model call may use; until it merges, read `providerRoutes.ts` on `main` before relying on any backup order written in this document, and write no new backup that is a different model (invariant 16). The report layout is not switched (grant L). Slice 6 is behind `AUTHORITY_TIERS_ENABLED` and slice 7 behind `PROVIDER_ROUTING_ENABLED`; turning either on for customers is Brandon's decision (S4). From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move.
+
+Earlier wording of this paragraph, kept as the record (revision 8, 8 Oct 2026): "read this whole document again; revision 8 changed sections 0, 4, 5, 6 and 7. The report layout is no longer switched (grant L). Slice 6 is built behind `AUTHORITY_TIERS_ENABLED`; turning it on for customers is Brandon's decision (S4). Slice 7 is in review as one pull request. From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move."
 
 ---
 
@@ -284,12 +298,13 @@ Use these. They correct errors in the earlier spec.
 7. Authority ranking orders and labels sources. It never excludes one. No publisher, quartile or venue bans.
 8. Layer 2 never treats missing evidence as proof of suppression. Missing evidence produces an entry with status `open` and a labelled hypothesis. It is never written as a finding.
 9. No new default model without the existing live OpenRouter probe passing and the ensemble allowlist test passing.
-10. Every new model call has a fallback on a different provider.
+10. Every new model call has a fallback on a different provider. (Rev 9: the fallback is the same model on that provider. See invariant 16.)
 11. Budgets are hard. The ceiling in `sourceBudget.ts` and the wallet hold both still abort a run.
 12. Nothing on the section 2a never-list reaches a reader, on any surface, except as section 2a allows on the "How this was researched" tab. Every slice from 3 on keeps `presentation_clean` at 1.0 in CI and in the harness.
 13. **A switch that is off changes nothing (rev 6).** (Rev 8: the three report-layout switches no longer exist, so this applies to the switches that remain.) With a slice's flag unset, a run sends the same prompts, returns the same text and writes the same rows as `main` did before the slice. Each slice keeps a test that asserts this on the real pipeline path.
 14. **Layer 1 is an explicit opt-in (rev 6).** A model call gets Layer 1 handling only when its caller asks for it. Challenge roles and the challenge-method stages of an adjudicative run keep the policy block and the challenge prefix. (Rev 8: the report writer always asks for Layer 1, for every report type.)
 15. **One layout (rev 8).** No code path writes, sends or shows a report in any layout but the section 2a report, and no setting can select one. Challenge material is shown only as "Challenge pass". The two `plainReportOnly` test files stay green unchanged.
+16. **A backup is the same model (rev 9; Brandon, 10 Oct 2026).** His rule: no backups that are trained differently because of a provider difference. When a provider refuses a call, the call may move only to the same model on another provider that is confirmed to serve it. It never moves to a different model, whatever provider offers one. When no other provider serves the model, the call fails and the run stops with the plain failure sentence, is not charged, and can be run again. RJ-025 (pull request #281, open on 10 Oct 2026) brings the code to this rule. Until it merges, `main` still holds different-model backups from the fixes of 9 and 10 Oct; add no new one, and do not copy that pattern.
 
 ## 7. Permissions Brandon has granted
 
@@ -354,6 +369,14 @@ Rules:
 - A full harness run costs real money. Give Brandon the estimated cost and wait for a yes before the first full run and before any run expected to cost more than the last.
 - Report scores to Brandon directly. Do not commit result files to the repository.
 - Do not advertise any external benchmark number. Do not describe the product as best in the world.
+
+**Where measurement stands (10 Oct 2026, as reported by the coordinator).**
+
+- The table `eval_results` holds three rows. Each is one task scored as a sample: one on 2 Oct, one on 8 Oct and one on 9 Oct 2026.
+- The full 30-task harness has never been run, on any commit. There is no recorded starting point for `main`, so no slice so far has been compared with one, and the rule "run the harness after every slice" has not been met for slices 3 to 7.
+- No reference reports exist. `EVAL_REFERENCE_DIR` is not set on any machine that runs the harness, so `pairwise_vs_reference` has never been scored for any task. Its target (">= 0.5 at slice 5, then rising") is untested.
+- Three sample rows are not evidence that any target in the tables above is met. Do not write that one is.
+- Next: a full harness run on current `main`, after Brandon agrees the estimated cost. The scores slice 8 is compared with must come from `main` as it stands when slice 8 starts, so a run made before RJ-025 merges is made again after it. `pairwise_vs_reference` stays `null` until Brandon saves reference reports and the directory is set.
 
 ## 9. Slices
 
@@ -657,9 +680,9 @@ Acceptance:
 - The jargon gate fails on a reader-facing string containing "claims".
 - Harness: `pairwise_vs_reference` at least 0.5 on tasks with a reference report; `report_quality` at least 4.0.
 
-### Slice 6. Source authority (parts 2 and 3 in review)
+### Slice 6. Source authority (done)
 
-Flag `AUTHORITY_TIERS_ENABLED`. This was slice 4.
+Flag `AUTHORITY_TIERS_ENABLED`. This was slice 4. Parts 2 and 3 merged as PR #262 on 8 Oct 2026 (this heading read "parts 2 and 3 in review" until revision 9).
 
 - New nullable column `authority_tier` (1 to 4) on sources, next free migration number. Computed at ingest, deterministically, from provider and domain:
   1. Primary and official: government, regulators, courts, standards bodies, statistical agencies, registries, original datasets, the original document itself.
@@ -722,9 +745,9 @@ Acceptance:
 - Follow-up, not built: a Layer 1 report written without the citation lock has a reference list of title, publisher, date and link only; it has never carried a source kind. Its reading page shows the words. Enriching that list is a change to the unlocked path's references.
 - Harness: `authority_share` is the share of citations whose source is tier 1 or 2, by recorded tier or else address. A citation saved without a source id is traced to its source through its passage. Null with no citations. A source without a tier counts as outside the top two.
 
-### Slice 7. Provider routing by request (built, in review)
+### Slice 7. Provider routing by request (done)
 
-Flag `PROVIDER_ROUTING_ENABLED`. This was slice 6; unchanged except for numbering.
+Flag `PROVIDER_ROUTING_ENABLED`. This was slice 6; unchanged except for numbering. Merged as PR #265 on 8 Oct 2026 (this heading read "built, in review" until revision 9).
 
 - **Reference lookups join the baseline (rev 6, issue #244).** `reference_lookup` uses the light synthesis branch, which the baseline switch does not change: fixed dossier headings, no automatic length, no bound citations, no reference list, no closing note. In this slice the lookup path produces the section 2a report through the same writer, with a test that a switched-on lookup has the reader layout.
 - Add `selectProviders(brief)` in the discovery layer. It **replaces** `SPECIALIST_CONNECTOR_KEYS`. With the flag on, the specialist mapping is not consulted. Do not leave two routing systems active together. Do not create a second provider interface.
@@ -826,6 +849,8 @@ Not done, and what it needs:
 
 Tests: `modelRouteFallback.test.ts`, `providerFailureCustomerPath.test.ts`, and the frontend `RunPageProviderFailure.test.tsx`.
 
+**As built (RJ-019).** Merged as PR #274 on 9 Oct 2026. What still stands: a refused call moves on instead of ending the run, the plain failure sentence, no charge for a failed run, and "Run it again". What has changed since: the list of backups. RJ-021 (PR #276) added Anthropic and NVIDIA to the routes. RJ-024 (PR #280) took the two Together ids named in this fix (`deepseek-ai/DeepSeek-V3.1`, `deepseek-ai/DeepSeek-V3`) off `CROSS_PROVIDER_BACKUPS` because Together refused both, and gave Together its own list. RJ-025 (PR #281, open) removes every different-model backup, the role's own backup included (invariant 16). The route order written above is the record of this fix, not the order on `main`.
+
 ### Fix outside the slices, 9 Oct 2026. Two more providers for every role
 
 Ordered by Brandon on 9 Oct 2026 (RJ-021). The OpenRouter account was empty, so no report could be written; the fix before this one moved a refused call to Hugging Face Inference and Together, and this one adds two providers that have credit today. His rule: more than one provider, always, with a call moving from one to the next. Not a slice and not behind a slice switch.
@@ -873,6 +898,41 @@ Not verified:
 - Whether the two Claude models accept a temperature was not confirmed; the call sends one and, if the answer is a 400 naming it, sends the request once more without it.
 
 Tests: `modelProviderRoutes.test.ts` (OpenRouter 402 answered by Anthropic; no Anthropic key answered by Together or NVIDIA; every role on each provider; the order setting; refusals from the added providers; a customer's own key; what a customer is told and charged when every provider refused) and `providerCallPricing.test.ts` (the price by provider and the cost row).
+
+**As built (RJ-021).** Merged as PR #276 on 9 Oct 2026. `MODEL_PROVIDER_ORDER`, the two provider calls and pricing by the provider that answered still stand. RJ-024 (PR #280) added the optional setting `ANTHROPIC_WORKSPACE_ID` and changed what Together is asked for. RJ-025 (PR #281, open) would remove the fast and strong model tables above (`ROUTE_MODEL_CLASS_BY_ROLE` and the Anthropic and NVIDIA defaults) and stop reading `ANTHROPIC_MODEL_FAST`, `ANTHROPIC_MODEL_STRONG`, `NVIDIA_MODEL_FAST` and `NVIDIA_MODEL_STRONG`, because under invariant 16 Anthropic is a route only for a role whose own model is a Claude model, and NVIDIA only for a model it serves.
+
+### Fix outside the slices, 10 Oct 2026. Together, the Anthropic header, a health check
+
+RJ-024. The full record is `docs/RJ-024-together-anthropic-health.md`; this is the short form.
+
+**As built (RJ-024).** Merged as PR #280 on 10 Oct 2026. Not behind a switch.
+
+- **Together backups that run.** Together refused both ids on the earlier backup list because neither is a serverless model there. Together became its own route with its own list of serverless models (`TOGETHER_BACKUP_MODELS` in `openrouter/providerRoutes.ts`). A Hugging Face hub id is no longer sent to Together under the same name: hub ids go to Hugging Face Inference only.
+- **A refusal about settings moves the call on.** A 400 that says the model needs a dedicated endpoint, or that the request needs a workspace header, is classified `route_config_error`. The next route is tried and one warning per process, for administrators only, goes to the server log. Any other 400 is still a malformed request and is not sent elsewhere.
+- **`ANTHROPIC_WORKSPACE_ID`** (optional setting, name only). When set, it is sent as the `anthropic-workspace-id` header on every Anthropic request.
+- **Provider health check, administrators only.** `POST /api/admin/providers/health` sends one request of at most 5 tokens to each provider that has a key and reports whether it answered. Nothing calls it at startup, on a timer or during a run.
+- **Cost.** A Together call is priced by provider (`together:<model id>`).
+- **Not verified.** No request was sent to any provider from this work. The first real proof is an administrator calling the health check after deploy.
+- **Superseded in part by RJ-025.** The Together list is a list of different models, which invariant 16 forbids. The classification, the header setting and the health check stay.
+- Tests: `rj024RouteConfiguration.test.ts`, `rj024ProviderHealth.test.ts`.
+
+### Fix outside the slices, 10 Oct 2026. A backup is the same model
+
+RJ-025. **In progress: pull request #281 is open and not merged.** Nothing below is on `main` yet. The full record is a file in that pull request, `docs/RJ-025-same-model-failover.md`; it is not in the repository on `main` until the pull request merges, and its name may change before then.
+
+Brandon's rule, 10 Oct 2026: no backups that are trained differently because of a provider difference. It is invariant 16.
+
+**As built on the branch (RJ-025).** Update this note when the pull request merges or changes.
+
+- **Every route of a call is the model the role chose:** its own id first, then that exact model on each other provider that has a key and is confirmed to serve it. One table, `SAME_MODEL_PROVIDER_TABLE` in `openrouter/providerRoutes.ts`, holds each model's id on each provider. No id is worked out from a name while a call runs.
+- **The role's own backup model is no longer called,** because it is a different model. It stays on the allowlist and can still be chosen as a role's model for a run.
+- **Removed:** `ROUTE_MODEL_CLASS_BY_ROLE`, `ANTHROPIC_DEFAULT_MODELS`, `NVIDIA_DEFAULT_MODELS`, `TOGETHER_BACKUP_MODELS` and `CROSS_PROVIDER_BACKUPS`. `MODEL_PROVIDER_ORDER` still sets the order.
+- **Anthropic is a route only for a Claude model.**
+- **When every provider that serves the model has refused, the run stops** with the existing failure sentence. No charge and "Run it again" are unchanged.
+- **The health check also reports, for each role,** the model it chose and which providers serve that exact model.
+- **Known on the branch, for Brandon to decide:** with the present presets each role's model is served by OpenRouter and Hugging Face Inference only, so no role reaches Anthropic, Together or NVIDIA. The model used by `double_check` and `internal_challenger` is confirmed on Hugging Face Inference alone, so those two roles have no second provider. Choosing another model for them is a preset change and is Brandon's.
+- **Not verified:** no request was sent to any provider. Which provider serves which model was read from each provider's public listing on 10 Oct 2026.
+- Test: `rj025SameModelFailover.test.ts`.
 
 ### Slice 8. Challenge layer (not started)
 

@@ -15,12 +15,14 @@ import {
 import { recordBillingEvent, type BillingEventKind } from './billingEventsService';
 import { resolveUserIdFromStripeIdentity } from './resolveStripeUserId';
 import { queryOne } from '../../db/pool';
+import { readSubscriptionPeriodEnd } from './stripeEventShape';
 
 export type StripeSubscriptionLike = {
   id: string;
   customer: string | { id: string; metadata?: { user_id?: string } };
   status: string;
-  current_period_end: number;
+  /** Older API shape only. Newer payloads carry the period on each item. */
+  current_period_end?: number | null;
   cancel_at_period_end: boolean;
   metadata?: {
     user_id?: string;
@@ -28,9 +30,15 @@ export type StripeSubscriptionLike = {
     tier?: string;
     report_id?: string;
     monitor_kind?: string;
+    price_id?: string;
+    app?: string;
   };
   items?: {
-    data?: Array<{ id?: string; price?: { id?: string | null; lookup_key?: string | null } }>;
+    data?: Array<{
+      id?: string;
+      current_period_end?: number | null;
+      price?: { id?: string | null; lookup_key?: string | null };
+    }>;
   };
 };
 
@@ -141,6 +149,19 @@ export async function syncStripeSubscriptionToUser(args: {
     [userId]
   );
 
+  const periodEndUnix = readSubscriptionPeriodEnd(subscription);
+  if (periodEndUnix === null) {
+    // Recorded and carried on: the plan is still applied, and the stored
+    // period end is left as it was rather than overwritten with nothing.
+    logger.warn('stripe_subscription_period_end_missing', {
+      eventId: eventId ?? null,
+      subscriptionId: subscription.id,
+      status: subscription.status,
+      source,
+    });
+  }
+  const periodEnd = periodEndUnix === null ? null : new Date(periodEndUnix * 1000);
+
   const resolvedTier = resolveSubscriptionPlanTier({
     priceLookupKey,
     stripePriceId,
@@ -152,7 +173,7 @@ export async function syncStripeSubscriptionToUser(args: {
     customerId,
     subscription.id,
     subscription.status,
-    new Date(subscription.current_period_end * 1000),
+    periodEnd,
     subscription.cancel_at_period_end,
     priceLookupKey,
     stripePriceId,
@@ -179,13 +200,13 @@ export async function syncStripeSubscriptionToUser(args: {
     });
   }
 
-  const periodEndIso = new Date(subscription.current_period_end * 1000).toISOString();
   let eventKind: BillingEventKind = 'subscription_updated';
   if (!prev) {
     eventKind = 'subscription_started';
   } else if (
     prev.current_period_end &&
-    periodEndIso > prev.current_period_end &&
+    periodEnd !== null &&
+    periodEnd.getTime() > new Date(prev.current_period_end).getTime() &&
     subscription.status === 'active'
   ) {
     eventKind = 'subscription_renewed';
@@ -216,12 +237,13 @@ export type StripeSubscriptionInput = {
   id: string;
   customer: StripeSubscriptionLike['customer'];
   status: string;
-  current_period_end: number;
+  current_period_end?: number | null;
   cancel_at_period_end: boolean;
   metadata?: StripeSubscriptionLike['metadata'];
   items: {
     data: Array<{
       id: string;
+      current_period_end?: number | null;
       price: string | { id?: string | null; lookup_key?: string | null } | null;
     }>;
   };
@@ -232,12 +254,13 @@ export function toSubscriptionLike(sub: StripeSubscriptionInput): StripeSubscrip
     id: sub.id,
     customer: sub.customer as StripeSubscriptionLike['customer'],
     status: sub.status,
-    current_period_end: sub.current_period_end,
+    current_period_end: readSubscriptionPeriodEnd(sub),
     cancel_at_period_end: sub.cancel_at_period_end,
     metadata: sub.metadata as StripeSubscriptionLike['metadata'],
     items: {
       data: sub.items.data.map((item) => ({
         id: item.id,
+        current_period_end: item.current_period_end ?? null,
         price: {
           id: typeof item.price === 'string' ? item.price : item.price?.id ?? null,
           lookup_key:

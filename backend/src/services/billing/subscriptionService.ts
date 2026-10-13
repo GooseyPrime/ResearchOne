@@ -65,7 +65,7 @@ export async function upsertUserSubscription(input: {
        stripe_customer_id = EXCLUDED.stripe_customer_id,
        stripe_subscription_id = EXCLUDED.stripe_subscription_id,
        cancel_at_period_end = EXCLUDED.cancel_at_period_end,
-       current_period_end = EXCLUDED.current_period_end,
+       current_period_end = COALESCE(EXCLUDED.current_period_end, user_subscriptions.current_period_end),
        updated_at = NOW()`,
     [
       input.userId,
@@ -131,7 +131,7 @@ export async function syncSubscription(
   stripeCustomerId: string,
   stripeSubscriptionId: string,
   status: string,
-  currentPeriodEnd: Date,
+  currentPeriodEnd: Date | null,
   cancelAtPeriodEnd: boolean,
   priceLookupKey?: string | null,
   stripePriceId?: string | null,
@@ -150,7 +150,7 @@ export async function syncSubscription(
     stripeCustomerId,
     stripeSubscriptionId,
     cancelAtPeriodEnd,
-    currentPeriodEnd: currentPeriodEnd.toISOString(),
+    currentPeriodEnd: currentPeriodEnd ? currentPeriodEnd.toISOString() : null,
   });
 
   logger.info('subscription_synced', {
