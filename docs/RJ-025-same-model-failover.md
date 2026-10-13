@@ -20,7 +20,7 @@ A role's routes are: the model the role chose, then that exact model on every ot
 - **The size tables are gone.** `ROUTE_MODEL_CLASS_BY_ROLE`, `ANTHROPIC_DEFAULT_MODELS`, `NVIDIA_DEFAULT_MODELS`, `TOGETHER_BACKUP_MODELS` and `CROSS_PROVIDER_BACKUPS` were removed. The settings `ANTHROPIC_MODEL_FAST`, `ANTHROPIC_MODEL_STRONG`, `NVIDIA_MODEL_FAST` and `NVIDIA_MODEL_STRONG` are no longer read.
 - **Order.** `MODEL_PROVIDER_ORDER` still decides the order. Together and Hugging Face Inference still share the `together` place, Together first.
 - **When every route for the model has refused, the run stops.** The customer reads the same sentence as before ("... our AI service is temporarily unavailable. You have not been charged ..."), the run can be run again, and no payment is taken. Waiting and going over the routes again after a credit or rate refusal is unchanged.
-- **Prices stay keyed by provider and model.** Anthropic prices were added for the two Claude ids the table sends to Anthropic. A Hugging Face call that answered for a role whose own id is on OpenRouter is priced from the row `huggingface_inference:<hub id>` when there is one, and otherwise at the price of the role's own id for the same model, so it is not recorded as free. That second price is an estimate.
+- **Prices stay keyed by provider and model.** Anthropic prices were added for the two Claude ids the table sends to Anthropic. A Hugging Face call is priced from the row `huggingface_inference:<hub id>`, then the row for the bare hub id. When neither exists its price is unknown and is recorded as unknown (zero in the price columns, `price_known: false` in the row's metadata). The price another provider charges for the same model is never used in its place (repair, below).
 - **One reading of a refusal changed.** OpenRouter's 404 "No endpoints found for <model>" is now read as being about OpenRouter (it has no host for the model), so the same model is asked on another provider. Before, it was read as a malformed request and ended the call. Any other 404 is unchanged.
 
 ## What each provider's catalog showed on 10 Oct 2026
@@ -69,14 +69,14 @@ A provider is asked only when it has a key and serves a role's model, with that 
 
 - **Hermes 4 70B has no host on OpenRouter today.** After this change those two roles depend on Hugging Face Inference alone. Choosing another model for them is a change to the presets and is yours to make; nothing here changes a role's model.
 - **Together and NVIDIA keys answer nothing now.** Neither serves a model a role chose. They come back into use when a row of the table gives one of them an id.
-- **The request form still has a per-run backup field.** A backup that is a different model is no longer called, so the field has no effect. The form was not changed.
+- **The request form's backup field** was removed in the repair (below), with the follow-up request page's and the admin page's.
 
 ## Not done, and what it needs
 
 - No request was sent to any provider (no keys here, and no paid calls). What OpenRouter answers for a model with no endpoint is taken from its documented message, not measured. The first real proof is an administrator calling the health check after deploy.
 - Together's list was read from its documentation page, because `GET /v1/models` needs a key.
 - No `.env` example file was edited. The four size settings listed above can be removed from the server at any time; they are ignored.
-- No price row was added for the Hugging Face hub ids. Until a row keyed `huggingface_inference:<hub id>` exists, such a call is costed at the price of the role's own id.
+- No price row was added for the Hugging Face hub ids. Until a row keyed `huggingface_inference:<hub id>` exists, such a call's price is recorded as unknown.
 
 ## Tests
 
@@ -89,3 +89,48 @@ Changed, because they asserted the old cross-model order:
 - `rj024RouteConfiguration.test.ts`: the Together backup list and each role's full old order.
 - `rj024ProviderHealth.test.ts`: every provider asked with a model of its own; added the per-role cases.
 - `providerCallPricing.test.ts`: ids that came from the removed tables; added the provider-and-model key cases.
+
+## Repair on the same pull request (13 Oct 2026)
+
+Ordered as ECHO-PR-20261013-R1 after review of the first commit. Every model a stage uses is still its own chosen model; this repair changes how a route is judged usable, when a run is allowed to start, and what the interfaces accept.
+
+### A key is not proof a route can answer
+
+- `backend/src/services/openrouter/routeAvailability.ts` keeps, per server process and in memory, what each route last did. A route is a provider and the id the model has there.
+- A route counts as **usable** only after it answered (a call, the startup preflight, the run readiness check or the admin health check), for 30 minutes.
+- A refusal about the account or the provider keeps a route **not usable** for a while: rate limit, outage or network 2 minutes; no credit, rejected key, route set up wrongly or model not served 15 minutes. A refusal of the request itself (malformed) is not recorded.
+- `callRoleModel` skips a route in that state while another route of the same model is open (`outcome: 'skipped'` in `routesTried`), and asks every route when all of them are in it, since the record may be out of date.
+- A call made with a caller's own OpenRouter key is never recorded: it says nothing about the server's account.
+- Hugging Face errors are read by the HTTP status on the error (`classifyHfError`): 402 is out of credit, 401/403 a rejected token, 429 a rate limit.
+
+### One definition for calls, the preflight and the readiness check
+
+- `serverModelRoutes` (`openrouterService.ts`) gives the routes a call has on this server. `callRoleModel`, the startup preflight and the run readiness check all use it, over the same table.
+- **Startup preflight** (`openrouterPreflight.ts`): for every kind of research and every role, the exact model the research engine chooses and each of its routes. Each distinct route is asked once with a request of at most 5 tokens, through `probeRoute`, the request the admin health check sends (now with OpenRouter's provider block, as a research call has). The answers are kept. Each role whose model has no route that answered is logged. Preset backup models are no longer probed. `OPENROUTER_PREFLIGHT=false` still turns it off.
+
+### Required stages are checked before customer work
+
+- `backend/src/services/openrouter/modelRouteReadiness.ts`. At the start of every research run (first run and after plan confirmation), inside the run's failure path and before the first model call, each stage a run cannot finish without must have a usable route for the exact model the run uses for it: planner (and the server's planning model), retriever, reasoner, double_check, verifier, outline_architect, section_drafter, coherence_refiner.
+- A route nothing is known about is asked once; the answer is kept for later runs.
+- When a stage has no usable route, the run stops with classification `no_usable_model_route`. `failure_meta.unavailableStages` lists each such stage, its model and each route's state, for administrators. The customer reads: "This run did not start because the AI model one of its steps needs cannot be reached from any of our providers right now. We do not swap in a different model. You have not been charged. Press Run it again to try again; you are only charged once, when a report is delivered."
+- Billing is unchanged: a run is charged only when it finishes with a report. The failure is retryable, so the hold is kept for a run again and released if the run is stopped for good.
+- A run on a caller's own key is not probed (the probe would be charged to them). For it a route counts only when the table confirms OpenRouter serves the exact id.
+
+### Backup-model controls removed; obsolete inputs refused
+
+- The request form, the follow-up request page (`ReportSpinoffPage`) and the admin model page (`ModelsPage`) offer one model per role.
+- `POST /api/research`, `POST /api/research/spinoff` and `PUT /api/admin/models` answer 400 (`code: obsolete_backup_model_input`) when a role names `fallback` or `fallbackEnabled`, instead of accepting and ignoring it. A model off the allowlist on a research request is now a 400 too (it was a 500).
+- A backup saved on an older run, or in the stored admin settings, is not read, not shown, and not carried into a follow-up request.
+- `GET /api/research/v2/ensemble-presets` sends each role's model only; `GET /api/research/model-options` and `GET /api/admin/models` no longer send the backup settings.
+- Removed: `v2FallbackResolution.ts`, the per-call `allowFallbackByRole` option, `effectiveFallback`, the backup half of `mergePresetWithRuntimeOverride`. The material judge tries its one model twice instead of Hermes 4 70B as a second model; the two harness judges have no backup model.
+- Kept: the presets' `fallback` entries and the `*_FALLBACK` settings. They are still validated against the allowlist at startup and can be chosen as a role's model for a run; no call uses them as a backup.
+
+### What this means today
+
+- Double-check and the internal challenger use Hermes 4 70B, confirmed on Hugging Face Inference only. With no Hugging Face token, or an empty Hugging Face account, every research run stops before any work (plainly, no charge) instead of at Double-check after the work. Choosing another model for those two roles is Brandon's decision.
+
+### Tests
+
+- New: `rj025RouteReadiness.test.ts`: exact-model routes across providers for every required stage; a key alone not counted; one probe, kept, asked again when too old; out-of-credit routes on every provider; one provider with allowance enough; Hugging Face 402; the Hermes single-provider case with and without a token; no probe on a caller's own key; a call skipping a refused route and asking all when all are refused; the failure stored, the customer sentence, the hold kept and nothing charged; the check placed before the first stage; obsolete inputs refused; a follow-up request and the presets carrying one model per role.
+- Rewritten: `openrouterPreflight.test.ts`.
+- Changed: `providerCallPricing.test.ts` (unknown stays unknown), `researchEnsemblePresets.test.ts`, `resolveReasoningModels.test.ts`, `reportQualityJudge.test.ts`, `evalRunner.test.ts`, the request form's test, and test files that passed `allowFallbackByRole`.
