@@ -370,21 +370,19 @@ describe('how many providers serve each role model (RJ-025)', () => {
     });
   });
 
-  it('counts one provider for the two roles that use Hermes 4 70B, and says their own provider is not confirmed', () => {
+  it('counts two providers for every role, Double-check and the internal challenger included, since they moved to Kimi K2 Thinking (13 Oct 2026)', () => {
     const coverage = roleProviderCoverage(everyKey);
-    const single = coverage.filter((entry) => entry.singleProvider);
-    expect(single.map((entry) => entry.role)).toEqual(['double_check', 'internal_challenger']);
-    for (const entry of single) {
-      expect(entry).toMatchObject({
-        model: 'nousresearch/hermes-4-70b',
-        modelName: 'NousResearch/Hermes-4-70B',
-        servedBy: ['huggingface_inference'],
-        providerCount: 1,
-        ownProviderConfirmed: false,
+    expect(coverage.filter((entry) => entry.singleProvider).map((entry) => entry.role)).toEqual([]);
+    for (const role of ['double_check', 'internal_challenger']) {
+      expect(coverage.find((entry) => entry.role === role)).toMatchObject({
+        model: 'moonshotai/kimi-k2-thinking',
+        modelName: 'moonshotai/Kimi-K2-Thinking',
+        servedBy: ['openrouter', 'huggingface_inference'],
+        providerCount: 2,
+        ownProviderConfirmed: true,
       });
     }
-    // Every other role has the same model on two providers.
-    for (const entry of coverage.filter((role) => !role.singleProvider)) expect(entry.providerCount, entry.role).toBe(2);
+    for (const entry of coverage) expect(entry.providerCount, entry.role).toBe(2);
   });
 
   it('counts only the providers that have a key on this server as routes a call really has', () => {
@@ -393,8 +391,8 @@ describe('how many providers serve each role model (RJ-025)', () => {
       expect(entry.servedByWithKey, entry.role).not.toContain('huggingface_inference');
       expect(entry.providerCountWithKey, entry.role).toBe(entry.ownProviderConfirmed ? 1 : 0);
     }
-    // With no Hugging Face token, the two Hermes roles have no confirmed route at all.
-    expect(coverage.filter((entry) => entry.providerCountWithKey === 0).map((entry) => entry.role)).toEqual(['double_check', 'internal_challenger']);
+    // With no Hugging Face token, every role still has its own model on OpenRouter.
+    expect(coverage.filter((entry) => entry.providerCountWithKey === 0).map((entry) => entry.role)).toEqual([]);
   });
 
   it('lists a different model the same role uses for one kind of research, or as the server setting', () => {
@@ -501,7 +499,7 @@ describe('POST /api/admin/providers/health', () => {
       providerCountWithKey: 2,
       singleProvider: false,
     });
-    expect(res.body.singleProviderRoles).toEqual(['double_check', 'internal_challenger']);
+    expect(res.body.singleProviderRoles).toEqual([]);
     expect(res.body.providersServingNoRoleModel).toEqual(['together', 'nvidia']);
   });
 

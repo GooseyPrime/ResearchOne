@@ -346,9 +346,11 @@ function v2Mode(
  *   - **Synthesis roles**: Qwen3-235B-Thinking (primary; 256k for corpus
  *     ingestion) → fallback DeepSeek V3.2 (all objectives). PATENT_GAP
  *     synthesizer uses Qwen3 → R1 for citation-dense reasoning.
- *   - **Adversarial** (double-check / internal_challenger): low-refusal Hermes
- *     OpenRouter line (Hermes 4 → Hermes 3 fallback) — validated by runtime
- *     `/chat/completions` preflight, not catalog metadata alone.
+ *   - **Adversarial** (double-check / internal_challenger): Kimi K2 Thinking
+ *     since 13 Oct 2026 (Brandon). Hermes 4 70B, the earlier choice, has no
+ *     host on OpenRouter and the Hugging Face account had no credit, so the
+ *     two steps had no usable route. Hermes 4 stays as the recorded second
+ *     choice and on the allowlist; it is never called as a backup (RJ-025).
  *   - **Utility roles**: V2_UTILITIES constant (V3.2 → V3.1), including
  *     `retriever` and `source_class_classifier`.
  *   - **Strongest-form**: same reasoner-class ladder as `reasoner` / `change_planner`
@@ -370,8 +372,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
-    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
   }),
 
   INVESTIGATIVE_SYNTHESIS: v2Mode({
@@ -385,8 +387,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
-    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
   }),
 
   PATENT_GAP_ANALYSIS: v2Mode({
@@ -403,8 +405,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
-    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
   }),
 
   NOVEL_APPLICATION_DISCOVERY: v2Mode({
@@ -418,8 +420,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
-    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
   }),
 
   ANOMALY_CORRELATION: v2Mode({
@@ -435,8 +437,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
-    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
   }),
 };
 
