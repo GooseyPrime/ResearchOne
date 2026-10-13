@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { judgeReportQuality, type QualityJudgment } from '../services/eval/reportQualityJudge';
-import { REPORT_QUALITY_FALLBACK, REPORT_QUALITY_MODEL, REPORT_QUALITY_PROMPT, type QualityPoint } from '../services/eval/reportQualityPrompt';
+import { REPORT_QUALITY_MODEL, REPORT_QUALITY_PROMPT, type QualityPoint } from '../services/eval/reportQualityPrompt';
 import { FIXTURE_DIR, VARIANT_NAMES, loadVariants, type VariantName } from './fixtures/report-quality/variants';
 
 interface Recording {
@@ -23,7 +23,8 @@ const variants = loadVariants();
 /** Stands in for the network only: answers with what the model said for this exact report. */
 const replay = (async (options: { messages: Array<{ role: string; content: string }>; runtimeOverrides?: unknown }) => {
   expect(options.messages[0]).toEqual({ role: 'system', content: REPORT_QUALITY_PROMPT });
-  expect(options.runtimeOverrides).toEqual({ primary: REPORT_QUALITY_MODEL, fallback: REPORT_QUALITY_FALLBACK });
+  // One model and no backup model (RJ-025).
+  expect(options.runtimeOverrides).toEqual({ primary: REPORT_QUALITY_MODEL });
   const name = VARIANT_NAMES.find((candidate) => variants[candidate] === options.messages[1].content);
   if (!name) throw new Error('The judge was sent a report that was never recorded');
   return { content: recording.replies[name].reply, model: recording.replies[name].model };
@@ -48,7 +49,7 @@ describe('report quality judge (B3)', () => {
   it('was recorded with the prompt, the model and the reports used now', () => {
     expect(recording.promptSha256).toBe(createHash('sha256').update(REPORT_QUALITY_PROMPT).digest('hex'));
     for (const name of VARIANT_NAMES) {
-      expect([REPORT_QUALITY_MODEL, REPORT_QUALITY_FALLBACK]).toContain(recording.replies[name].model);
+      expect(recording.replies[name].model).toBe(REPORT_QUALITY_MODEL);
       expect(recording.replies[name].reportSha256, name).toBe(createHash('sha256').update(variants[name]).digest('hex'));
     }
   });

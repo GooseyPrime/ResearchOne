@@ -38,15 +38,24 @@ export type SpinoffPrefill = {
 type AuthScope = { userId: string | null; orgId: string | null };
 
 /** Unwrap persisted `{ overrides: { role: … } }` envelope for spinoff prefill consumers. */
-function flattenModelOverridesForPrefill(
+export function flattenModelOverridesForPrefill(
   raw: Record<string, unknown> | null
 ): Record<string, unknown> | null {
   if (!raw || typeof raw !== 'object') return null;
   const nested = raw.overrides;
-  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-    return nested as Record<string, unknown>;
+  const byRole = nested && typeof nested === 'object' && !Array.isArray(nested) ? (nested as Record<string, unknown>) : raw;
+  // Only each role's model is carried to the new request. A backup model saved
+  // on an older run is left out: the request would be refused with it (RJ-025).
+  const out: Record<string, unknown> = {};
+  for (const [role, entry] of Object.entries(byRole)) {
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const primary = (entry as { primary?: unknown }).primary;
+      if (typeof primary === 'string' && primary.trim()) out[role] = { primary: primary.trim() };
+    } else if (role === 'embedding' && typeof entry === 'string') {
+      out[role] = entry;
+    }
   }
-  return raw;
+  return out;
 }
 
 export async function resolveOwnedReportForSpinoff(

@@ -5,13 +5,13 @@ import type { ReasoningModelRole } from './reasoningModelPolicy';
 export function runtimeOverrideForRole(
   overrides: PerRunModelOverrides,
   role: ReasoningModelRole
-): { primary?: string; fallback?: string } | undefined {
+): { primary?: string } | undefined {
   const entry = overrides.overrides?.[role];
   if (!entry) return undefined;
   const primary = entry.primary?.trim() || undefined;
-  const fallback = entry.fallback?.trim() || undefined;
-  if (!primary && !fallback) return undefined;
-  return { primary, fallback };
+  if (!primary) return undefined;
+  // Only the role's model. A backup model saved on an old run is not read (RJ-025).
+  return { primary };
 }
 
 /** Normalize client-supplied per-run model overrides before persisting or enqueueing. */

@@ -291,24 +291,31 @@ describe('ResearchRequestForm — the Lab controls survived the merge', () => {
     expect(call.modelOverrides).toEqual({ planner: { primary: 'vendor/my-planner' } });
   });
 
-  it('does not send a backup model unless the user allowed it', async () => {
-    // The checkbox is the whole meaning of the field: a backup id typed into a
-    // row with the box unticked is a draft, not an instruction.
+  it('offers no backup model for any role, even when the preset still names one (RJ-025)', async () => {
     renderForm();
     await waitFor(() => expect(screen.getByTestId('request-models-toggle')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('request-models-toggle'));
-    fireEvent.change(screen.getAllByPlaceholderText('vendor/planner-backup')[0], {
-      target: { value: 'vendor/other' },
-    });
+    expect(screen.queryByPlaceholderText('vendor/planner-backup')).toBeNull();
+    expect(screen.queryByLabelText(/backup/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Allow all backups/i })).toBeNull();
+    expect(screen.getByText(/no other model stands in for it/)).toBeInTheDocument();
     const call = await submitWith('Compare two suppliers');
     expect(call.modelOverrides).toBeUndefined();
+  });
 
-    startResearchMock.mockClear();
-    fireEvent.click(screen.getAllByLabelText('Use the backup if the first one fails')[0]);
+  it('runs a stored request again with each role model only, leaving out a backup model it saved', async () => {
+    getResearchRunMock.mockResolvedValue({
+      id: 'run-old',
+      query: 'Old request with a saved backup',
+      supplemental: '',
+      model_overrides: { planner: { primary: 'vendor/one', fallback: 'vendor/two', fallbackEnabled: true } },
+    });
+    renderForm(['/app/research?prefill=run-old']);
+    await waitFor(() => expect(screen.getByDisplayValue('Old request with a saved backup')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
     await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
-    const second = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(second.modelOverrides).toEqual({ planner: { fallback: 'vendor/other' } });
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.modelOverrides).toEqual({ planner: { primary: 'vendor/one' } });
   });
 });
 

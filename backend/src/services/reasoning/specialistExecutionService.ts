@@ -199,7 +199,6 @@ export async function runSpecialistExecution(input: {
   researchBrief?: ResearchBrief;
   engineVersion?: string;
   researchObjective?: import('./reasoningModelPolicy').ResearchObjective;
-  allowFallbackByRole: Record<string, boolean>;
   byokApiKeyOverride?: string;
   onProgress?: (message: string) => Promise<void> | void;
   onCheckpoint?: (key: string, snapshot: Record<string, unknown>) => Promise<void> | void;
@@ -311,7 +310,6 @@ export async function runSpecialistExecution(input: {
           role: agent as ModelRole,
           engineVersion: input.engineVersion,
           researchObjective: input.researchObjective,
-          allowFallbackByRole: input.allowFallbackByRole,
           byokApiKeyOverride: input.byokApiKeyOverride,
           messages: [
             { role: 'system', content: SYSTEM_PROMPTS[agent as keyof typeof SYSTEM_PROMPTS] },

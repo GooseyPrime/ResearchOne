@@ -56,7 +56,6 @@ export async function extractAndPersistContradictions(args: {
   doubleCheckOutput: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
 }): Promise<ExtractedContradiction[]> {
   const { runId, reportId, chunks, claims, doubleCheckOutput } = args;
@@ -85,7 +84,6 @@ export async function extractAndPersistContradictions(args: {
       role: 'double_check',
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
-      allowFallbackByRole: args.allowFallbackByRole,
       byokApiKeyOverride: args.byokApiKeyOverride,
       callPurpose: 'contradiction_extraction',
       messages: [

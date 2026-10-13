@@ -11,7 +11,6 @@ vi.mock('../services/openrouter/openrouterService', () => ({
 import { classifyIntent } from '../services/planning/intentClassifier';
 
 const CLASSIFIER_OPTS = {
-  allowFallbackByRole: {},
   byokApiKeyOverride: 'test-openrouter-key',
 } as const;
 

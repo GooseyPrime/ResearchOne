@@ -14,8 +14,6 @@ import { resolveCorsOrigins } from './corsOrigins';
 import { resolveRetrievalMinSimilarity } from './retrievalSimilarityFloor';
 import { resolveStripeCheckoutRedirect } from './stripeCheckoutUrls';
 import {
-  ANTHROPIC_DEFAULT_MODELS,
-  NVIDIA_DEFAULT_MODELS,
   parseModelProviderOrder,
 } from '../services/openrouter/providerRoutes';
 
@@ -181,8 +179,10 @@ const config = {
 
   /**
    * Anthropic, called directly (RJ-021). With no key the provider is left out
-   * of every role's routes. The two model settings are optional; the defaults
-   * are in `providerRoutes.ts`.
+   * of every role's routes. It is a route only for a role whose own model is a
+   * Claude model (RJ-025); which Claude id that is comes from the table in
+   * `providerRoutes.ts`. `ANTHROPIC_MODEL_FAST` and `ANTHROPIC_MODEL_STRONG`
+   * are no longer read.
    */
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -193,23 +193,17 @@ const config = {
      * workspace needs. Leave it unset for a key created inside a workspace.
      */
     workspaceId: process.env.ANTHROPIC_WORKSPACE_ID?.trim() || '',
-    models: {
-      fast: process.env.ANTHROPIC_MODEL_FAST?.trim() || ANTHROPIC_DEFAULT_MODELS.fast,
-      strong: process.env.ANTHROPIC_MODEL_STRONG?.trim() || ANTHROPIC_DEFAULT_MODELS.strong,
-    },
   },
 
   /**
    * NVIDIA NIM, an OpenAI-compatible API (RJ-021). With no key the provider is
-   * left out of every role's routes.
+   * left out of every role's routes. It is a route only for a model the table
+   * in `providerRoutes.ts` says NVIDIA serves (RJ-025). `NVIDIA_MODEL_FAST`
+   * and `NVIDIA_MODEL_STRONG` are no longer read.
    */
   nvidia: {
     apiKey: process.env.NVIDIA_API_KEY || '',
     baseUrl: process.env.NVIDIA_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1',
-    models: {
-      fast: process.env.NVIDIA_MODEL_FAST?.trim() || NVIDIA_DEFAULT_MODELS.fast,
-      strong: process.env.NVIDIA_MODEL_STRONG?.trim() || NVIDIA_DEFAULT_MODELS.strong,
-    },
   },
 
   /** The order providers are tried in. See `providerRoutes.ts`. */

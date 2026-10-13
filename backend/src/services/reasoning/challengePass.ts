@@ -98,7 +98,6 @@ export async function writeChallengePass(args: {
   challengeNotes: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
 }): Promise<ChallengePassResult> {
   const notes = args.challengeNotes.trim();
@@ -109,7 +108,6 @@ export async function writeChallengePass(args: {
       role: 'plain_language_synthesizer',
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
-      allowFallbackByRole: args.allowFallbackByRole,
       byokApiKeyOverride: args.byokApiKeyOverride,
       // Written for the reader with the baseline handling. The challenge itself
       // ran earlier, as the challenge stage, and is not run again here.

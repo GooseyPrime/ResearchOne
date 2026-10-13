@@ -1,5 +1,5 @@
 import { callRoleModel } from '../openrouter/openrouterService';
-import { QUALITY_POINTS, REPORT_QUALITY_FALLBACK, REPORT_QUALITY_MODEL, REPORT_QUALITY_PROMPT, type QualityPoint } from './reportQualityPrompt';
+import { QUALITY_POINTS, REPORT_QUALITY_MODEL, REPORT_QUALITY_PROMPT, type QualityPoint } from './reportQualityPrompt';
 
 type JudgeCall = typeof callRoleModel;
 
@@ -36,7 +36,7 @@ export async function judgeReportQuality(report: string, call: JudgeCall = callR
         { role: 'user', content: report },
       ],
       temperature: 0,
-      runtimeOverrides: { primary: REPORT_QUALITY_MODEL, fallback: REPORT_QUALITY_FALLBACK },
+      runtimeOverrides: { primary: REPORT_QUALITY_MODEL },
     });
     return parseQualityScore(result.content);
   } catch {

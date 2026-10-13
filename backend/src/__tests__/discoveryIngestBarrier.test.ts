@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }));
 vi.mock('../db/pool', () => ({ query: queryMock }));
-vi.mock('../utils/sleep', () => ({ sleep: async () => {} }));
+vi.mock('../utils/sleep', () => ({ sleep: async () => undefined }));
 
 import {
   waitForDiscoveryIngestReadiness,

@@ -26,7 +26,6 @@ export async function generatePlan(input: {
   llmOpts: {
     engineVersion?: string;
     researchObjective?: import('../reasoning/reasoningModelPolicy').ResearchObjective;
-    allowFallbackByRole: Record<string, boolean>;
     byokApiKeyOverride?: string;
   };
 }): Promise<PlanPayload> {
@@ -61,7 +60,6 @@ export async function generatePlan(input: {
     role: 'planner',
     engineVersion: input.llmOpts.engineVersion,
     researchObjective: input.llmOpts.researchObjective,
-    allowFallbackByRole: input.llmOpts.allowFallbackByRole,
     callPurpose: 'wave5_plan_generation',
     runtimeOverrides: { primary: config.models.planning },
     byokApiKeyOverride: input.llmOpts.byokApiKeyOverride,

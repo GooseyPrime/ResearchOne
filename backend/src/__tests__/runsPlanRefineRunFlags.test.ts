@@ -34,7 +34,6 @@ vi.mock('../services/planning/planWriteService', () => ({
   markRunRunningAfterPlanConfirm: vi.fn(),
 }));
 vi.mock('../services/planning/planRefinementService', () => ({ refinePlan: mocks.refinePlan }));
-vi.mock('../services/reasoning/v2FallbackResolution', () => ({ allowFallbackByRoleFromOverrides: vi.fn().mockReturnValue({}) }));
 vi.mock('../services/reasoning/researchOrchestratorNormalize', () => ({ normalizeRunOverrides: vi.fn() }));
 vi.mock('../queue/queues', () => ({ researchQueue: { getJob: vi.fn() } }));
 vi.mock('../queue/researchQueueJobs', () => ({ researchResumeJobId: vi.fn() }));

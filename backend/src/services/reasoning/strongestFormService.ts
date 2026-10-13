@@ -80,7 +80,6 @@ export async function runStrongestFormPass(args: {
   sourceClassMap: SourceClassMap;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
 }): Promise<StrongestFormPassResult> {
   void args.sourceClassMap;
@@ -123,7 +122,6 @@ export async function runStrongestFormPass(args: {
       role: 'strongest_form',
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
-      allowFallbackByRole: args.allowFallbackByRole,
       byokApiKeyOverride: args.byokApiKeyOverride,
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.strongest_form },

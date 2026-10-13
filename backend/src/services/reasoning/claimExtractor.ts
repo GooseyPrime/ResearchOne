@@ -160,7 +160,6 @@ export async function extractAndPersistClaims(args: {
   synthesizerOutput: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
   wave53?: {
     /** Full classifier maps (chunk + canonical URL). */
@@ -195,7 +194,6 @@ export async function extractAndPersistClaims(args: {
         role: 'verifier', // Use verifier role for structured extraction
         engineVersion: args.engineVersion,
         researchObjective: args.researchObjective,
-        allowFallbackByRole: args.allowFallbackByRole,
         byokApiKeyOverride: args.byokApiKeyOverride,
         messages: [
           { role: 'system', content: withPreamble(CLAIM_EXTRACTOR_PROMPT) },

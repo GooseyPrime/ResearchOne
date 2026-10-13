@@ -25,6 +25,7 @@ import {
   type EntitlementTierKey,
 } from '@/constants/researchObjectives';
 import { supplementalUrlCrawlPayload } from '@/utils/supplementalUrlCrawl';
+import { modelRowsFromStoredOverrides, type RoleModelChoice } from '@/utils/modelOverrides';
 import { effectiveEntitlementTier, useBillingSubscriptionQuery } from '@/hooks/useBillingSubscription';
 import { useStore } from '@/store/useStore';
 import { liveResearchUrl } from '@/utils/researchRunRoutes';
@@ -73,9 +74,8 @@ export default function ReportSpinoffPage() {
   const [reportLengthPreset, setReportLengthPreset] = useState<'automatic' | 'short' | 'standard' | 'long' | 'extra_long' | 'custom'>('automatic');
   const [reportLengthCustom, setReportLengthCustom] = useState('2200');
   const [showModels, setShowModels] = useState(false);
-  const [modelRows, setModelRows] = useState<
-    Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }>
-  >({});
+  // One model per role; there is no backup model (RJ-025).
+  const [modelRows, setModelRows] = useState<Record<string, RoleModelChoice>>({});
 
   const { data: prefill, isLoading: prefillLoading } = useQuery({
     queryKey: ['spinoff-prefill', reportId],
@@ -122,35 +122,15 @@ export default function ReportSpinoffPage() {
     if (!ensembleData?.presets) return;
     const preset = ensembleData.presets[researchObjective];
     if (!prefill?.modelOverrides && preset) {
-      const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
-      for (const role of Object.keys(preset)) {
-        const p = preset[role];
-        rows[role] = { primary: p.primary, fallback: p.fallback, fallbackEnabled: false };
-      }
+      const rows: Record<string, RoleModelChoice> = {};
+      for (const role of Object.keys(preset)) rows[role] = { primary: preset[role].primary };
       setModelRows(rows);
     }
   }, [ensembleData, researchObjective, prefill?.modelOverrides]);
 
   useEffect(() => {
-    const raw = prefill?.modelOverrides;
-    if (!raw || typeof raw !== 'object') return;
-    const overrides =
-      'overrides' in raw &&
-      raw.overrides &&
-      typeof raw.overrides === 'object' &&
-      !Array.isArray(raw.overrides)
-        ? (raw.overrides as Record<string, unknown>)
-        : (raw as Record<string, unknown>);
-    const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
-    for (const [role, row] of Object.entries(overrides)) {
-      if (!row || typeof row !== 'object') continue;
-      const r = row as { primary?: string; fallback?: string; fallbackEnabled?: boolean };
-      rows[role] = {
-        primary: typeof r.primary === 'string' ? r.primary : undefined,
-        fallback: typeof r.fallback === 'string' ? r.fallback : undefined,
-        fallbackEnabled: r.fallbackEnabled === true,
-      };
-    }
+    // The parent run's model for each role. A backup model it saved is left out.
+    const rows = modelRowsFromStoredOverrides(prefill?.modelOverrides);
     if (Object.keys(rows).length > 0) setModelRows(rows);
   }, [prefill?.modelOverrides]);
 
@@ -181,11 +161,7 @@ export default function ReportSpinoffPage() {
     const payload: Record<string, unknown> = {};
     for (const role of Object.keys(baseline)) {
       const row = modelRows[role];
-      payload[role] = {
-        primary: (row?.primary?.trim() || baseline[role].primary).trim(),
-        fallback: (row?.fallback?.trim() || baseline[role].fallback).trim(),
-        fallbackEnabled: row?.fallbackEnabled === true,
-      };
+      payload[role] = { primary: (row?.primary?.trim() || baseline[role].primary).trim() };
     }
     return Object.keys(payload).length > 0 ? payload : undefined;
   }, [modelRows, ensembleData, researchObjective]);
@@ -396,28 +372,16 @@ export default function ReportSpinoffPage() {
                 {showModels ? (
                   <div className="space-y-2 rounded-lg border border-indigo-900/30 p-3">
                     {Object.keys(ensembleData.presets[researchObjective]).map((role) => (
-                      <div key={role} className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                      <div key={role} className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                         <span className="text-slate-400 uppercase tracking-wide self-center">{plainLabel(role)}</span>
                         <input
                           className="input text-xs"
-                          placeholder="Primary model"
+                          placeholder="Model"
                           value={modelRows[role]?.primary ?? ''}
                           onChange={(e) =>
                             setModelRows((prev) => ({
                               ...prev,
                               [role]: { ...prev[role], primary: e.target.value },
-                            }))
-                          }
-                          disabled={mutation.isPending}
-                        />
-                        <input
-                          className="input text-xs"
-                          placeholder="Fallback model"
-                          value={modelRows[role]?.fallback ?? ''}
-                          onChange={(e) =>
-                            setModelRows((prev) => ({
-                              ...prev,
-                              [role]: { ...prev[role], fallback: e.target.value },
                             }))
                           }
                           disabled={mutation.isPending}

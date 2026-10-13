@@ -70,7 +70,6 @@ export interface RelevanceItem {
 export interface RelevanceModelArgs {
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
 }
 

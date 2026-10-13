@@ -1,13 +1,24 @@
 /**
- * Provider health check (RJ-024). Administrators only.
+ * Provider health check (RJ-024, RJ-025). Administrators only.
  *
- * Sends one very small request (an answer of at most 5 tokens) to each
- * provider that has a key on this server, using the first model the routes
- * would use there, and reports whether it answered.
+ * Two things are reported:
  *
- * It runs only when an administrator calls `POST /api/admin/providers/health`.
- * Nothing calls it at startup, on a timer or during a run: every check is a
- * real request on the server's own provider accounts.
+ *   1. For each provider that has a key on this server and serves a model
+ *      some role chose: one very small request (an answer of at most 5
+ *      tokens) with that model, and whether it answered. A provider that has
+ *      a key but serves no role's model is listed and not called.
+ *   2. For each role: the model it chose, which providers serve that exact
+ *      model, how many, and how many of those have a key on this server. A
+ *      role with one provider has no other route if that provider refuses.
+ *      This part is read from the table in `providerRoutes.ts`; it sends
+ *      nothing.
+ *
+ * The full check runs only when an administrator calls
+ * `POST /api/admin/providers/health`. The one-route request it is built on
+ * (`probeRoute`) is also what the startup preflight and the run readiness
+ * check send (RJ-025 repair), so all three ask a route the way a research
+ * call does, and every answer is kept in `routeAvailability.ts`. Nothing
+ * calls it on a timer.
  *
  * The error text returned is the provider's own message, shortened, with
  * anything that looks like a key removed.
@@ -15,19 +26,30 @@
 import axios, { type AxiosError } from 'axios';
 import { InferenceClient } from '@huggingface/inference';
 import { config } from '../../config';
-import { crossProviderBackupModelsForRole, isHfRepoModel } from '../reasoning/reasoningModelPolicy';
-import { buildOpenRouterAppHeaders } from './openrouterProviderBlock';
+import { REASONING_MODEL_ROLES, type ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
+import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openrouterProviderBlock';
 import {
   anthropicMessagesEndpoint,
   anthropicRequestHeaders,
+  chosenModelsForRole,
+  classifyHfError,
   classifyModelError,
   extractProviderMessage,
   nvidiaChatEndpoint,
+  providerForChosenModel,
   togetherChatEndpoint,
   type ModelErrorClassification,
   type ModelRouteProvider,
 } from './openrouterService';
-import { routeConfigurationReason, togetherModelsForRole, type RouteConfigurationReason } from './providerRoutes';
+import {
+  MODEL_PROVIDER_NAMES,
+  providersServingModel,
+  routeConfigurationReason,
+  sameModelName,
+  type ModelProviderName,
+  type RouteConfigurationReason,
+} from './providerRoutes';
+import { recordRouteAnswered, recordRouteRefused } from './routeAvailability';
 
 /** The size of the answer asked for. The request is as small as a provider accepts. */
 export const PROVIDER_HEALTH_MAX_TOKENS = 5;
@@ -85,28 +107,118 @@ export function redactKeyLikeText(text: string, secrets: readonly string[] = con
   return out.length > ERROR_TEXT_MAX_CHARS ? `${out.slice(0, ERROR_TEXT_MAX_CHARS - 1)}…` : out;
 }
 
+/** Which providers have a key on this server. */
+export function providersWithKey(): Record<ModelProviderName, boolean> {
+  return {
+    openrouter: Boolean(config.openrouter.apiKey?.trim()),
+    anthropic: Boolean(config.anthropic.apiKey?.trim()),
+    together: Boolean(config.together.apiKey?.trim()),
+    huggingface_inference: Boolean(config.hfToken?.trim()),
+    nvidia: Boolean(config.nvidia.apiKey?.trim()),
+  };
+}
+
+/** One model a role uses, and the providers that serve that exact model. */
+export interface ModelProviderCoverage {
+  /** The id the role names. */
+  model: string;
+  /** The model's name in the provider table, or the id when the table has no row for it. */
+  modelName: string;
+  /** Every provider confirmed to serve this exact model. */
+  servedBy: ModelProviderName[];
+  /** How many providers serve it. */
+  providerCount: number;
+  /** Of those, the ones that have a key on this server. */
+  servedByWithKey: ModelProviderName[];
+  /** How many of them have a key on this server: the number of routes a call really has. */
+  providerCountWithKey: number;
+  /** True when one provider or none serves it: there is no same-model route to move to. */
+  singleProvider: boolean;
+  /** False when the provider the role's own id belongs to was not confirmed to serve it. */
+  ownProviderConfirmed: boolean;
+}
+
+export interface RoleProviderCoverage extends ModelProviderCoverage {
+  role: ReasoningModelRole;
+  /**
+   * A different model the same role uses for one kind of research, or as the
+   * server's own setting. Left out when the role uses one model everywhere.
+   */
+  otherModels?: Array<ModelProviderCoverage & { usedFor: string }>;
+}
+
+function coverageForModel(model: string, hasKey: Readonly<Record<ModelProviderName, boolean>>): ModelProviderCoverage {
+  const chosen = { provider: providerForChosenModel(model), model };
+  const servedBy = providersServingModel(chosen).map((route) => route.provider);
+  const servedByWithKey = servedBy.filter((provider) => hasKey[provider]);
+  return {
+    model,
+    modelName: sameModelName(chosen),
+    servedBy,
+    providerCount: servedBy.length,
+    servedByWithKey,
+    providerCountWithKey: servedByWithKey.length,
+    singleProvider: servedBy.length <= 1,
+    ownProviderConfirmed: servedBy.includes(chosen.provider),
+  };
+}
+
 /**
- * The providers that have a key on this server, each with the first model the
- * routes would use there. A provider with no key is left out.
+ * For every role: how many providers serve the model it chose (RJ-025). Read
+ * from the provider table; no provider is called.
+ */
+export function roleProviderCoverage(
+  hasKey: Readonly<Record<ModelProviderName, boolean>> = providersWithKey()
+): RoleProviderCoverage[] {
+  return REASONING_MODEL_ROLES.map((role) => {
+    const [first, ...others] = chosenModelsForRole(role);
+    const otherModels = others.map((entry) => ({ ...coverageForModel(entry.model, hasKey), usedFor: entry.usedFor }));
+    return {
+      role,
+      ...coverageForModel(first.model, hasKey),
+      ...(otherModels.length > 0 ? { otherModels } : {}),
+    };
+  });
+}
+
+/**
+ * The providers to ask, each with the first role model it serves. A provider
+ * is asked only when it has a key on this server AND serves a model some role
+ * chose: asking it for any other model would say nothing about a route a call
+ * can take.
  */
 export function providerHealthTargets(): ProviderHealthTarget[] {
+  const hasKey = providersWithKey();
   const targets: ProviderHealthTarget[] = [];
-  const backups = crossProviderBackupModelsForRole('planner', { openrouter: true, hub: true });
-  if (config.openrouter.apiKey?.trim()) {
-    const model = backups.find((id) => !isHfRepoModel(id));
-    if (model) targets.push({ provider: 'openrouter', model });
+  // The research engine's own choices first, role by role; then the models a
+  // role uses for one kind of research or as the server's setting.
+  const chosen = [
+    ...REASONING_MODEL_ROLES.map((role) => chosenModelsForRole(role)[0]),
+    ...REASONING_MODEL_ROLES.flatMap((role) => chosenModelsForRole(role).slice(1)),
+  ];
+  for (const provider of MODEL_PROVIDER_NAMES) {
+    if (!hasKey[provider]) continue;
+    for (const entry of chosen) {
+      const route = providersServingModel({ provider: providerForChosenModel(entry.model), model: entry.model }).find(
+        (served) => served.provider === provider
+      );
+      if (route) {
+        targets.push({ provider, model: route.model });
+        break;
+      }
+    }
   }
-  if (config.anthropic.apiKey?.trim()) targets.push({ provider: 'anthropic', model: config.anthropic.models.fast });
-  if (config.together.apiKey?.trim()) {
-    const model = togetherModelsForRole('planner')[0];
-    if (model) targets.push({ provider: 'together', model });
-  }
-  if (config.hfToken?.trim()) {
-    const model = backups.find((id) => isHfRepoModel(id));
-    if (model) targets.push({ provider: 'huggingface_inference', model });
-  }
-  if (config.nvidia.apiKey?.trim()) targets.push({ provider: 'nvidia', model: config.nvidia.models.fast });
   return targets;
+}
+
+/**
+ * Providers that have a key on this server but serve no model any role chose.
+ * No call can reach them, so the health check does not ask them.
+ */
+export function providersServingNoRoleModel(): ModelProviderName[] {
+  const hasKey = providersWithKey();
+  const asked = new Set(providerHealthTargets().map((target) => target.provider));
+  return MODEL_PROVIDER_NAMES.filter((provider) => hasKey[provider] && !asked.has(provider));
 }
 
 async function sendHealthRequest(target: ProviderHealthTarget): Promise<number | null> {
@@ -117,11 +229,15 @@ async function sendHealthRequest(target: ProviderHealthTarget): Promise<number |
 
   switch (target.provider) {
     case 'openrouter':
+      // The same provider block a research call sends: the account's
+      // data-collection setting can leave a model with no host, and a probe
+      // without it would report a route the real call cannot take.
       return (
-        await axios.post(`${config.openrouter.baseUrl}/chat/completions`, body, {
-          ...request,
-          headers: buildOpenRouterAppHeaders(config.openrouter.apiKey),
-        })
+        await axios.post(
+          `${config.openrouter.baseUrl}/chat/completions`,
+          { ...body, provider: buildOpenRouterProviderBlock(config.openrouter.dataCollection) },
+          { ...request, headers: buildOpenRouterAppHeaders(config.openrouter.apiKey, { 'X-ResearchOne-Call-Type': 'preflight' }) }
+        )
       ).status;
     case 'anthropic':
       return (await axios.post(anthropicMessagesEndpoint(), body, { ...request, headers: anthropicRequestHeaders() })).status;
@@ -139,10 +255,29 @@ async function sendHealthRequest(target: ProviderHealthTarget): Promise<number |
   }
 }
 
-async function checkOne(target: ProviderHealthTarget): Promise<ProviderHealthResult> {
+/** Sends the request for one route. Replaced in tests; never called by a test against a real provider. */
+export type ProviderRouteSender = (target: ProviderHealthTarget) => Promise<number | null>;
+
+/**
+ * Ask one route once (provider and the id the model has there) and record the
+ * outcome in `routeAvailability.ts`. Used by the admin health check, the
+ * startup preflight and the run readiness check, so all three ask the route
+ * the way a research call does. Never throws: a refusal is a result.
+ */
+export async function probeRoute(
+  target: ProviderHealthTarget,
+  send: ProviderRouteSender = sendHealthRequest
+): Promise<ProviderHealthResult> {
+  const result = await checkOne(target, send);
+  if (result.ok) recordRouteAnswered(target.provider, target.model, 'probe');
+  else if (result.classification) recordRouteRefused(target.provider, target.model, result.classification, 'probe');
+  return result;
+}
+
+async function checkOne(target: ProviderHealthTarget, send: ProviderRouteSender): Promise<ProviderHealthResult> {
   const startedAt = Date.now();
   try {
-    const status = await sendHealthRequest(target);
+    const status = await send(target);
     return { ...target, ok: true, status: status ?? 200, durationMs: Date.now() - startedAt };
   } catch (err) {
     const durationMs = Date.now() - startedAt;
@@ -161,18 +296,20 @@ async function checkOne(target: ProviderHealthTarget): Promise<ProviderHealthRes
         error: redactKeyLikeText(message),
       };
     }
+    const hfStatus = (err as { httpResponse?: { status?: unknown } } | null)?.httpResponse?.status;
     return {
       ...target,
       ok: false,
-      status: null,
+      status: typeof hfStatus === 'number' ? hfStatus : null,
       durationMs,
-      classification: 'provider_unavailable',
+      // The Hugging Face client throws its own errors, with the HTTP status on them.
+      classification: classifyHfError(err),
       error: redactKeyLikeText(err instanceof Error ? err.message : String(err)),
     };
   }
 }
 
 /** Ask each configured provider once, side by side. Never throws: a refusal is a result. */
-export async function checkProviderHealth(): Promise<ProviderHealthResult[]> {
-  return Promise.all(providerHealthTargets().map((target) => checkOne(target)));
+export async function checkProviderHealth(send?: ProviderRouteSender): Promise<ProviderHealthResult[]> {
+  return Promise.all(providerHealthTargets().map((target) => probeRoute(target, send)));
 }

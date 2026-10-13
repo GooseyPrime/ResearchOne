@@ -47,7 +47,7 @@ describe('harness command', () => {
           throw new SignInRejectedError();
         },
         lookupReference: async () => 'R1-unused',
-        print: () => {},
+        print: () => undefined,
       })
     ).rejects.toThrow('The sign-in was rejected or expired.');
     expect(submitted).toEqual([tasks[0].id]);
@@ -109,7 +109,7 @@ describe('harness command', () => {
       runId: 'run-4',
       readStatus: async () => ({ status: 'aborted', reason: 'retry budget exhausted' }),
       timeoutMs: 1000,
-      sleep: async () => {},
+      sleep: async () => undefined,
       now: () => 0,
     });
     expect(outcome).toEqual({ status: 'aborted', reason: 'retry budget exhausted' });

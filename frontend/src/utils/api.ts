@@ -714,7 +714,6 @@ export const publishReportFeatured = (id: string, adminToken?: string) =>
 
 export interface ResearchModelOptionsResponse {
   defaults: Record<string, string>;
-  fallbacks: Record<string, string>;
   allowlist: Record<string, string[]>;
 }
 
@@ -1036,7 +1035,8 @@ export const getRunArtifacts = (id: string) =>
 export const getResearchModelOptions = () =>
   api.get<ResearchModelOptionsResponse>('/research/model-options').then(r => r.data);
 
-export type EnsembleRolePair = { primary: string; fallback: string };
+/** The model a preset gives a role. There is no backup model (RJ-025). */
+export type EnsembleRolePair = { primary: string };
 
 export interface ResearchV2EnsemblePresetsResponse {
   presets: Record<ResearchObjective, Record<string, EnsembleRolePair>>;
@@ -1106,9 +1106,9 @@ export const getRuntimeLogs = (adminToken: string | undefined, opts?: { stream?:
     })
     .then(r => r.data);
 
+/** A role's model override. There is no backup model (RJ-025); the server refuses one. */
 export interface ModelOverrideEntry {
   primary?: string;
-  fallback?: string;
 }
 
 export interface AdminModelsResponse {

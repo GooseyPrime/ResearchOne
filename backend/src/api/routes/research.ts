@@ -11,7 +11,7 @@ import {
 import type { ResearchJobData } from '../../services/reasoning/researchOrchestrator';
 import { researchQueue, intellmeDeletionQueue } from '../../queue/queues';
 import { markRunCancelled } from '../../services/researchCancellation';
-import { validatePerRunModelOverrides } from '../../services/runtimeModelStore';
+import { ObsoleteBackupModelInputError, validatePerRunModelOverrides } from '../../services/runtimeModelStore';
 import {
   APPROVED_REASONING_MODEL_ALLOWLIST,
   parseResearchObjective,
@@ -342,7 +342,20 @@ async function handleStartResearchRun(
         }
       }
 
-      const normalizedOverrides = modelOverrides ? validatePerRunModelOverrides(modelOverrides) : { overrides: {} };
+      // A model choice the run cannot use is refused here, with the reason,
+      // before anything is queued or held: a model off the allowlist, or a
+      // backup model (no longer supported, RJ-025).
+      let normalizedOverrides: ReturnType<typeof validatePerRunModelOverrides>;
+      try {
+        normalizedOverrides = modelOverrides ? validatePerRunModelOverrides(modelOverrides) : { overrides: {} };
+      } catch (validationErr) {
+        const message = validationErr instanceof Error ? validationErr.message : 'Invalid model choice';
+        res.status(400).json({
+          error: message,
+          code: validationErr instanceof ObsoleteBackupModelInputError ? validationErr.code : 'invalid_model_overrides',
+        });
+        return;
+      }
 
       const runId = uuidv4();
       const title = researchQuery.slice(0, 200);
@@ -599,11 +612,23 @@ router.post('/spinoff', startResearchUpload, (req, res, next) => {
   void handleStartResearchRun(req, res, next, fromReportId);
 });
 
+/** Each objective's preset, with only the model each role uses. */
+export function presetsWithoutBackupModels(): Record<string, Record<string, { primary: string }>> {
+  const out: Record<string, Record<string, { primary: string }>> = {};
+  for (const [objective, roles] of Object.entries(V2_MODE_PRESETS)) {
+    out[objective] = {};
+    for (const [role, pair] of Object.entries(roles)) out[objective][role] = { primary: pair.primary };
+  }
+  return out;
+}
+
 // GET /api/research/v2/ensemble-presets — Research One 2 objective-based defaults (before /:id)
 router.get('/v2/ensemble-presets', async (_req, res, next) => {
   try {
+    // One model per role. The presets' second choice is not sent: no call
+    // uses it, so no page should offer it as a backup (RJ-025).
     res.json({
-      presets: V2_MODE_PRESETS,
+      presets: presetsWithoutBackupModels(),
       allowlist: APPROVED_REASONING_MODEL_ALLOWLIST,
     });
   } catch (err) {
@@ -634,7 +659,6 @@ router.get('/model-options', async (_req, res, next) => {
         citation_integrity_checker: config.models.citationIntegrityChecker,
         final_revision_verifier: config.models.finalRevisionVerifier,
       },
-      fallbacks: config.models.fallbacks,
       allowlist: APPROVED_REASONING_MODEL_ALLOWLIST,
     });
   } catch (err) {

@@ -65,7 +65,6 @@ export async function classifyRetrievedSources(args: {
   retrieverAnalysis: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
 }): Promise<SourceClassMap> {
   const { chunks, researchQuery, retrieverAnalysis } = args;
@@ -107,7 +106,6 @@ export async function classifyRetrievedSources(args: {
         role: 'source_class_classifier',
         engineVersion: args.engineVersion,
         researchObjective: args.researchObjective,
-        allowFallbackByRole: args.allowFallbackByRole,
         byokApiKeyOverride: args.byokApiKeyOverride,
         messages: [
           { role: 'system', content: SYSTEM_PROMPTS.source_class_classifier },

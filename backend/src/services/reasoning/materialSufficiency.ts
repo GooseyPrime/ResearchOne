@@ -2,7 +2,7 @@ import { logger } from '../../utils/logger';
 import { callRoleModel } from '../openrouter/openrouterService';
 import { stripGradeLines } from './baselineReport';
 import type { EvidenceSufficiencyResult } from './sourceSufficiencyGate';
-import { REPORT_QUALITY_FALLBACK, REPORT_QUALITY_MODEL } from '../eval/reportQualityPrompt';
+import { REPORT_QUALITY_MODEL } from '../eval/reportQualityPrompt';
 
 export interface MaterialJudgement {
   sufficient: boolean;
@@ -97,23 +97,21 @@ export async function judgeRetrievedMaterial(args: {
   plan: unknown;
   material: string;
   engineVersion?: string;
-  allowFallbackByRole?: Record<string, boolean> | null;
   byokApiKeyOverride?: string;
   callModel?: typeof callRoleModel;
 }): Promise<{ judgement: MaterialJudgement | null; failed: boolean; attempts: number }> {
   const caller = args.callModel ?? callRoleModel;
   const material = stripGradeLines(args.material);
   const prompt = `Request:\n${args.request}\n\nPlan:\n${JSON.stringify(args.plan).slice(0, 2000)}\n\nRetrieved material:\n${material}\n\nA sealed shared corpus is not missing material. Judge only the material above. Is it of suitable quality and content to answer the request? Return strict JSON only: {"sufficient":boolean,"reason":string,"missing":string[]}`;
-  const attempts = [
-    { primary: REPORT_QUALITY_MODEL, fallback: REPORT_QUALITY_FALLBACK },
-    { primary: REPORT_QUALITY_FALLBACK, fallback: REPORT_QUALITY_MODEL },
-  ];
+  // Two tries, both with the judge's one model: the second is for a reply that
+  // could not be read. A different model is never asked in its place (RJ-025);
+  // a refused provider has already been handled inside `callRoleModel`.
+  const attempts = [{ primary: REPORT_QUALITY_MODEL }, { primary: REPORT_QUALITY_MODEL }];
   for (const [index, overrides] of attempts.entries()) {
     try {
       const result = await caller({
         role: 'verifier',
         engineVersion: args.engineVersion,
-        allowFallbackByRole: args.allowFallbackByRole,
         byokApiKeyOverride: args.byokApiKeyOverride,
         baselineLayer: false,
         runtimeOverrides: overrides,

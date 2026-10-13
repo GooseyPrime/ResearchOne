@@ -26,8 +26,6 @@ import { loadRunFlags } from '../../services/eval/runFlagStore';
 import { runWithFlags } from '../../config';
 import type { PlanPayload } from '../../services/planning/planTypes';
 import type { ResearchJobData } from '../../services/reasoning/researchOrchestratorTypes';
-import { allowFallbackByRoleFromOverrides } from '../../services/reasoning/v2FallbackResolution';
-import { normalizeRunOverrides } from '../../services/reasoning/researchOrchestratorNormalize';
 import { researchQueue } from '../../queue/queues';
 import { researchResumeJobId } from '../../queue/researchQueueJobs';
 import { enqueueResearchResumeAfterPlan } from '../../utils/researchResumeQueueing';
@@ -138,8 +136,6 @@ router.post('/:runId/plan/refine', async (req: Request, res: Response, next: Nex
       run.resume_job_payload && typeof run.resume_job_payload === 'object' && !Array.isArray(run.resume_job_payload)
         ? (run.resume_job_payload as ResearchJobData)
         : null;
-    const overrides = normalizeRunOverrides(payload?.modelOverrides);
-    const allowFallbackByRole = allowFallbackByRoleFromOverrides(overrides);
     let byokApiKeyOverride: string | undefined;
     if (payload?.creditChargeContext?.type === 'byok' && payload.creditChargeContext.userId) {
       const { getDecryptedKey } = await import('../../services/byok/keyVault');
@@ -167,7 +163,6 @@ router.post('/:runId/plan/refine', async (req: Request, res: Response, next: Nex
         llmOpts: {
           engineVersion: payload?.engineVersion,
           researchObjective: payload?.researchObjective,
-          allowFallbackByRole,
           byokApiKeyOverride,
         },
       })

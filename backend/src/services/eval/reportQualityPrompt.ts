@@ -1,5 +1,6 @@
 /**
- * Fixed judge for report_quality. One model, one fallback on another provider.
+ * Fixed judge for report_quality. One model. If its provider refuses, the same
+ * model is asked on another provider that serves it; no other model is used (RJ-025).
  * The judge sees the report only. It does not see the task, the scores, or which side is ours.
  */
 export const REPORT_QUALITY_PROMPT = `You are scoring the finished research report a reader is given. You are shown the report only, not the question it was written for, so judge everything from the report itself.
@@ -17,7 +18,6 @@ Defects to look for, and the point each one lowers:
 Reply with JSON only, in this shape, the defects first: {"defects": ["short description of each defect, or an empty list"], "answer_first": 5, "readable_structure": 5, "plain_neutral_prose": 5, "citation_clarity": 5, "honest_disagreement": 5, "appropriate_length": 5}. Each score is a whole number from 1 to 5.`;
 
 export const REPORT_QUALITY_MODEL = 'deepseek/deepseek-v3.2';
-export const REPORT_QUALITY_FALLBACK = 'nousresearch/hermes-4-70b';
 
 export const QUALITY_POINTS = [
   'answer_first',

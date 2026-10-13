@@ -530,13 +530,6 @@ export const CUSTOMER_OPTIONS: readonly CustomerOption[] = [
   ),
   entry(
     'request_field',
-    'backup_model',
-    'Backup model',
-    'A second model that takes over a step if the first one fails.',
-    'The first model times out and the backup finishes the step.'
-  ),
-  entry(
-    'request_field',
     'run_enhancements',
     'Run enhancements',
     'Paid extras you can switch on for this one run.',

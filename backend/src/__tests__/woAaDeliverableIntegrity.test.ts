@@ -67,7 +67,6 @@ describe('WO-AA fixture — intent classification survives markdown', () => {
     // explicit declarations must survive an unavailable classifier provider.
     callRoleModelMock.mockRejectedValue(new Error('offline classifier fixture'));
     const brief = await classifyIntent(REFERENCE_PROMPT, undefined, {
-      allowFallbackByRole: {},
     });
     expect(brief.primaryIntent).toBe('opportunity_discovery');
     expect(brief.confidence).toBeGreaterThanOrEqual(0.95);
@@ -221,7 +220,6 @@ describe('WO-AA fixture — review hardening (PR #203)', () => {
     // explicit-declaration fallback must still carry the secondary intent
     // because buildCanonicalExecutionPlan selects specialists from it.
     const brief = await classifyIntent(REFERENCE_PROMPT, undefined, {
-      allowFallbackByRole: {},
     });
     expect(brief.primaryIntent).toBe('opportunity_discovery');
     expect(brief.secondaryIntent).toBe('feasibility');
