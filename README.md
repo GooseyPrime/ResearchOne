@@ -4,6 +4,8 @@
 
 > Not a chatbot. Not a hallucination machine. A disciplined investigation engine with epistemic governance built in.
 
+> **Model change, 13 Oct 2026 (Brandon).** Double-check and the internal challenger (`double_check`, `internal_challenger`, every research kind) now use **Kimi K2 Thinking** (`moonshotai/kimi-k2-thinking` on OpenRouter, `moonshotai/Kimi-K2-Thinking` on Hugging Face) instead of Hermes 4 70B. Why: OpenRouter has no host for Hermes 4 70B (`endpoints: []`, checked 13 Oct 2026) and the Hugging Face account has no credit, so those steps had no usable route. Kimi K2 Thinking runs on OpenRouter first and falls back to the same model on Hugging Face; no other model is used in its place. Hermes 4 70B stays on the allowlist and can still be chosen for one run. Change in `backend/src/config/researchEnsemblePresets.ts`; record in `docs/RJ-025-same-model-failover.md`.
+
 ---
 
 ## Deployment Topology
@@ -614,8 +616,9 @@ verifier) — must have ≥ 2 live OpenRouter upstreams. Verified 2026-04-28-PM:
 
 **Adversarial roles** (double-check / internal_challenger) — low-refusal Hermes line on OpenRouter, chosen after Venice Dolphin + Euryale slugs failed runtime `/chat/completions` under typical provider policy despite appearing in the catalog (2026-05-10). **Listing on `GET /api/v1/models` is not sufficient** — defaults must pass the same smoke probe as startup preflight (`openrouterPreflight.ts`). Operators can verify slugs with `npm run probe:openrouter-models` (backend dir).
 
-- `nousresearch/hermes-4-70b` — default adversarial primary.
-- `nousresearch/hermes-3-llama-3.1-70b` — default adversarial preset fallback.
+- `moonshotai/kimi-k2-thinking` — default for both adversarial roles since 13 Oct 2026 (see the note at the top).
+- `nousresearch/hermes-4-70b` — the default until 13 Oct 2026; allowlisted, can be chosen for one run. OpenRouter lists no host for it.
+- `nousresearch/hermes-3-llama-3.1-70b` — allowlisted second choice; never used as a backup (RJ-025).
 
 Experimental opt-in only (not defaults): `cognitivecomputations/dolphin-mistral-24b-venice-edition:free`, `sao10k/l3.3-euryale-70b` — allowlisted for per-run overrides.
 

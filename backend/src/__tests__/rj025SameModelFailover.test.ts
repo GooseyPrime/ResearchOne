@@ -348,20 +348,20 @@ describe('the routes of every role, with every provider configured', () => {
     const kimi = [`openrouter:${KIMI}`, `huggingface_inference:${KIMI_HUB}`];
     const qwen = [`openrouter:${QWEN}`, `huggingface_inference:${QWEN_HUB}`];
     const v32 = [`openrouter:${V32}`, `huggingface_inference:${V32_HUB}`];
-    const hermes = [`openrouter:${HERMES4}`, `huggingface_inference:${HERMES4_HUB}`];
+    // Double-check and the internal challenger use Kimi K2 Thinking since 13 Oct 2026.
     expect(chain).toEqual({
       planner: kimi,
       retriever: v32,
       source_class_classifier: v32,
       reasoner: qwen,
       strongest_form: qwen,
-      double_check: hermes,
+      double_check: kimi,
       synthesizer: qwen,
       verifier: v32,
       plain_language_synthesizer: qwen,
       outline_architect: qwen,
       section_drafter: qwen,
-      internal_challenger: hermes,
+      internal_challenger: kimi,
       coherence_refiner: qwen,
       revision_intake: v32,
       report_locator: v32,
@@ -717,7 +717,8 @@ describe('a role whose model has one confirmed provider', () => {
   it('asks Hugging Face Inference for the same Hermes model when OpenRouter has no host for it', async () => {
     h.answers.openrouter = () => ({ status: 404, message: 'No endpoints found for nousresearch/hermes-4-70b.' });
 
-    const result = await researchCall('double_check');
+    // Hermes 4 70B is no preset's model since 13 Oct 2026; a run may still choose it.
+    const result = await researchCall('double_check', { runtimeOverrides: { primary: HERMES4 } });
 
     expect(sentPairs()).toEqual([
       ['openrouter', HERMES4],
@@ -730,7 +731,7 @@ describe('a role whose model has one confirmed provider', () => {
     h.answers.openrouter = () => ({ status: 404, message: 'No endpoints found for nousresearch/hermes-4-70b.' });
     h.hub = () => 'fail';
 
-    const failure = (await researchCall('internal_challenger').then(
+    const failure = (await researchCall('internal_challenger', { runtimeOverrides: { primary: HERMES4 } }).then(
       () => null,
       (err: unknown) => err
     )) as NormalizedModelError;

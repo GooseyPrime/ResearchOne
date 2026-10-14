@@ -256,11 +256,11 @@ policy review:
 | OpenRouter slug | Upstream providers (verified) | Role(s) |
 |---|---|---|
 | `qwen/qwen3-235b-a22b-thinking-2507` | Alibaba, DeepInfra, AtlasCloud, Novita (4) | **Primary**: reasoner, change_planner (all objectives); all synthesis roles (outline_architect, section_drafter, synthesizer, coherence_refiner, plain_language_synthesizer, section_rewriter). **Fallback** for R1 when R1 is primary (PATENT_GAP planner). |
-| `moonshotai/kimi-k2-thinking` | Novita, Google, AtlasCloud (3) | **Primary planner**: GENERAL, INVESTIGATIVE, NOVEL, ANOMALY objectives. |
+| `moonshotai/kimi-k2-thinking` | Novita, Google, AtlasCloud (3) | **Primary planner**: GENERAL, INVESTIGATIVE, NOVEL, ANOMALY objectives. **Primary double-check / internal_challenger** (all objectives) since 13 Oct 2026, Brandon's decision: Hermes 4 70B had no OpenRouter host and the Hugging Face account had no credit. |
 | `deepseek/deepseek-r1-0528` | DeepInfra, SiliconFlow, AtlasCloud, Novita, Together (5) | **Primary planner + synthesizer**: PATENT_GAP. **Fallback** for Qwen3 on reasoner / change_planner / synthesis roles. NOVEL planner fallback. |
 | `deepseek/deepseek-v3.2` | Baidu, SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail, Friendli, Google, Alibaba (10+) | **Primary**: all utility roles (retriever, verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier). **Fallback**: planner (GENERAL/INVESTIGATIVE/ANOMALY) and synthesis roles. |
 | `deepseek/deepseek-chat-v3.1` | SambaNova, DeepInfra, Chutes, Novita, SiliconFlow, AtlasCloud, WandB, Fireworks, Google, Together (10+) | **Fallback** for utility roles only. |
-| `nousresearch/hermes-4-70b` | *verify live; provider count varies by account* | **Primary** double-check / internal_challenger (all objectives) after Venice Dolphin + Euryale failed runtime `/chat/completions` under typical provider policy (2026-05-10). |
+| `nousresearch/hermes-4-70b` | *verify live; provider count varies by account* | Primary double-check / internal_challenger from 2026-05-10 until **13 Oct 2026**, when it was replaced by Kimi K2 Thinking (OpenRouter lists no host for it). Allowlisted; can be chosen for one run. |
 | `nousresearch/hermes-3-llama-3.1-70b` | *verify live* | **Preset fallback** adversarial roles. |
 | `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice | **Experimental user-opt-in only** — catalog-listed but failed runtime probe in production (2026-05-10). |
 | `sao10k/l3.3-euryale-70b` | *varies* | **Experimental user-opt-in only** — same runtime failure shape as Dolphin Venice on production accounts (2026-05-10). |

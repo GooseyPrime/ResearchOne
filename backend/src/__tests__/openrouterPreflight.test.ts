@@ -20,8 +20,8 @@ import { isSameModel } from '../services/openrouter/providerRoutes';
 import { recordRouteAnswered, recordRouteRefused, routeState } from '../services/openrouter/routeAvailability';
 import { REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../services/reasoning/reasoningModelPolicy';
 
-const HERMES4 = 'nousresearch/hermes-4-70b';
-const HERMES4_HUB = 'NousResearch/Hermes-4-70B';
+const KIMI = 'moonshotai/kimi-k2-thinking';
+const KIMI_HUB = 'moonshotai/Kimi-K2-Thinking';
 
 const was = { openrouter: config.openrouter.apiKey, hf: config.hfToken, anthropic: config.anthropic.apiKey, nvidia: config.nvidia.apiKey, together: config.together.apiKey };
 
@@ -104,28 +104,31 @@ describe('preflightModelRoutes', () => {
     expect(new Set(keys).size).toBe(keys.length);
     // Only providers that serve a role's exact model are asked, whatever keys are set.
     expect(new Set(asked.map((target) => target.provider))).toEqual(new Set(['openrouter', 'huggingface_inference']));
-    expect(routeState('huggingface_inference', HERMES4_HUB)).toBe('usable');
+    expect(routeState('huggingface_inference', KIMI_HUB)).toBe('usable');
+    // Hermes 4 70B is no role's model since 13 Oct 2026, so it is never probed.
+    expect(keys.some((key) => /hermes-4-70b/i.test(key))).toBe(false);
   });
 
   it('names the roles whose exact model has no route that answered, with each route and its reason', async () => {
     const { probe } = fakeProbe((target) =>
-      target.model === HERMES4 ? 'provider_unavailable' : target.model === HERMES4_HUB ? 'quota_exceeded' : null
+      target.model === KIMI ? 'quota_exceeded' : target.model === KIMI_HUB ? 'quota_exceeded' : null
     );
     const summary = await preflightModelRoutes({ probe });
     expect(summary.ok).toBe(false);
     const roles = new Set(summary.rolesWithoutRoute.map((entry) => entry.role));
-    expect(roles).toEqual(new Set(['double_check', 'internal_challenger']));
+    // Kimi K2 Thinking: the planner (except patent research), Double-check and the internal challenger.
+    expect(roles).toEqual(new Set(['planner', 'double_check', 'internal_challenger']));
     for (const entry of summary.rolesWithoutRoute) {
       expect(entry.routes).toEqual([
-        { provider: 'openrouter', model: HERMES4, reason: 'provider_unavailable' },
-        { provider: 'huggingface_inference', model: HERMES4_HUB, reason: 'quota_exceeded' },
+        { provider: 'openrouter', model: KIMI, reason: 'quota_exceeded' },
+        { provider: 'huggingface_inference', model: KIMI_HUB, reason: 'quota_exceeded' },
       ]);
     }
-    expect(routeState('huggingface_inference', HERMES4_HUB)).toBe('not_usable');
+    expect(routeState('huggingface_inference', KIMI_HUB)).toBe('not_usable');
   });
 
   it('warns but stays ok when one route of a model refuses and another answers', async () => {
-    const { probe } = fakeProbe((target) => (target.provider === 'openrouter' && target.model !== HERMES4 ? 'quota_exceeded' : null));
+    const { probe } = fakeProbe((target) => (target.provider === 'openrouter' ? 'quota_exceeded' : null));
     const summary = await preflightModelRoutes({ probe });
     expect(summary.ok).toBe(true);
     expect(summary.hasWarnings).toBe(true);

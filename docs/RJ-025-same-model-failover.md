@@ -107,7 +107,7 @@ Ordered as ECHO-PR-20261013-R1 after review of the first commit. Every model a s
 
 - `serverModelRoutes` (`openrouterService.ts`) gives the routes a call has on this server. `callRoleModel`, the startup preflight and the run readiness check all use it, over the same table.
 - **Startup preflight** (`openrouterPreflight.ts`): for every kind of research and every role, the exact model the research engine chooses and each of its routes. Each distinct route is asked once with a request of at most 5 tokens, through `probeRoute`, the request the admin health check sends (now with OpenRouter's provider block, as a research call has). The answers are kept. Each role whose model has no route that answered is logged. Preset backup models are no longer probed.
-- **Provider cost of probes.** Each probe is a real model request on the server's provider account, billed by that provider (a one-line prompt, an answer of at most 5 tokens). The preflight sends them automatically on every process start, one per distinct route: with the presets of 13 Oct 2026, 5 on OpenRouter plus 5 on Hugging Face Inference when `HF_TOKEN` is set. `OPENROUTER_PREFLIGHT=false` (or `0`, `no`) turns the preflight off. It does not turn off the run readiness check, which probes a route the same way when nothing has answered on it in the last 30 minutes in that process (at most one probe per route per 30 minutes; real calls that answer keep the record fresh).
+- **Provider cost of probes.** Each probe is a real model request on the server's provider account, billed by that provider (a one-line prompt, an answer of at most 5 tokens). The preflight sends them automatically on every process start, one per distinct route: with the presets after the model change of 13 Oct 2026 (four distinct models), 4 on OpenRouter plus 4 on Hugging Face Inference when `HF_TOKEN` is set. `OPENROUTER_PREFLIGHT=false` (or `0`, `no`) turns the preflight off. It does not turn off the run readiness check, which probes a route the same way when nothing has answered on it in the last 30 minutes in that process (at most one probe per route per 30 minutes; real calls that answer keep the record fresh).
 
 ### Required stages are checked before customer work
 
@@ -147,3 +147,12 @@ Ordered as ECHO-PR-20261013-R1 after review of the first commit. Every model a s
 | DeepSeek V3.2 | 12 endpoints | deepinfra live; novita, featherless-ai error | not listed | not listed |
 
 Together's `GET /v1/models` answers 401 without a key, so its published serverless list was read. Hugging Face Inference is still the only verified route for Hermes 4 70B; the remaining gate is an `HF_TOKEN` with Inference Providers allowance for that host. The table pins the model and version, not a host's precision.
+
+## Model change, 13 Oct 2026 (Brandon's decision)
+
+Double-check and the internal challenger (`double_check`, `internal_challenger`, all five research kinds in `V2_MODE_PRESETS`) now use **Kimi K2 Thinking** in place of Hermes 4 70B.
+
+- **Why.** OpenRouter lists `nousresearch/hermes-4-70b` with no endpoint (rechecked 13 Oct 2026), and the Hugging Face account, its only verified host, had no credit. Those steps therefore had no usable route, and the readiness check would have stopped every research run before any work.
+- **Routes now.** OpenRouter `moonshotai/kimi-k2-thinking` first (2 hosts listed on 13 Oct), then the same model on Hugging Face `moonshotai/Kimi-K2-Thinking`. No role is left with a single provider.
+- **Kept.** Hermes 4 70B stays on the allowlist and as the presets' recorded second choice; it can be chosen for one run and is never called as a backup.
+- **Not measured.** No harness run compared the two models on the challenge steps; the change was made to restore a usable route.
