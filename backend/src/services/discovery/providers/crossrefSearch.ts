@@ -3,6 +3,7 @@ import { SearchProvider } from './searchProvider';
 import { BibliographicDetails, SearchQuery, SearchResultCandidate, isoFromParts } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
+import { safeFailureRecord } from './providerHttp';
 
 interface CrossrefItem {
   DOI?: string;
@@ -104,7 +105,7 @@ export class CrossrefSearchProvider implements SearchProvider {
           };
         });
     } catch (err) {
-      logger.warn('[discovery] Crossref search failed:', err);
+      logger.warn('[discovery] Crossref search failed', safeFailureRecord(err));
       query.onFailure?.(err);
       return [];
     }

@@ -44,6 +44,8 @@ export function summarizeScores(rows: Array<{ taskId: string; scores: EvalScores
     doi_resolution: mean(rows.map((row) => row.scores.doi_resolution)),
     contradiction_retention: mean(rows.map((row) => row.scores.contradiction_retention)),
     anomaly_retained: mean(rows.map((row) => row.scores.anomaly_retained)),
+    // Null until a reference report exists for at least one compared task.
+    pairwise_vs_reference: mean(rows.map((row) => row.scores.pairwise_vs_reference ?? null)),
     time_to_report_p50: percentile(times, 50),
     time_to_report_p90: percentile(times, 90),
     tokens_p50: percentile(tokens, 50),

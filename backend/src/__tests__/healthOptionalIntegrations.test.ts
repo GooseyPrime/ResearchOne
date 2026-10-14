@@ -67,28 +67,16 @@ describe('health: optional integrations', () => {
     expect(result.integrations.scite.ok).toBe(true);
   });
 
-  it('returns degraded (not down) when a configured integration probe fails', async () => {
+  it('a set key is configured but not verified, and no request is made to a keyless health page', async () => {
     process.env.SCITE_API_KEY = 'sk_test_fake';
-    mockAxiosGet.mockImplementation((url: string) => {
-      if (url.includes('scite')) return Promise.reject(new Error('timeout'));
-      return Promise.resolve({ status: 200 });
-    });
-
-    const result = await buildHealth(mockReq);
-    expect(result.status).toBe('degraded');
-    expect(result.integrations.scite.configured).toBe(true);
-    expect(result.integrations.scite.ok).toBe(false);
-  });
-
-  it('degraded status still returns HTTP 200 (not 503)', async () => {
     process.env.PARALLEL_API_KEY = 'pk_test_fake';
-    mockAxiosGet.mockImplementation((url: string) => {
-      if (url.includes('parallel')) return Promise.reject(new Error('conn refused'));
-      return Promise.resolve({ status: 200 });
-    });
+    mockAxiosGet.mockImplementation(() => Promise.resolve({ status: 200 }));
 
     const result = await buildHealth(mockReq);
-    expect(result.status).toBe('degraded');
-    expect(result.status).not.toBe('down');
+    expect(result.integrations.scite).toMatchObject({ configured: true, ok: true, verified: false });
+    expect(result.integrations.parallel).toMatchObject({ configured: true, ok: true, verified: false });
+    // Their /health pages answer 200 to anyone; asking them proved nothing about the key.
+    expect(mockAxiosGet.mock.calls.map((call) => String(call[0]))).not.toContain('https://api.scite.ai/health');
+    expect(mockAxiosGet.mock.calls.map((call) => String(call[0]))).not.toContain('https://api.parallel.ai/health');
   });
 });

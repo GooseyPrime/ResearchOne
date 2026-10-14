@@ -10,6 +10,7 @@
 import axios from 'axios';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
+import { sciteEditorialKind, sciteRecordFor, type SciteRecord } from '../discovery/providers/sciteScholarly';
 
 export type ResolveStatus = 'resolved' | 'unresolved' | 'unknown';
 export type EditorialKind = 'retracted' | 'corrected';
@@ -27,6 +28,8 @@ export interface DoiCheck {
 export interface DoiHttp {
   status(method: 'HEAD' | 'GET', url: string): Promise<number>;
   json(url: string): Promise<unknown>;
+  /** Scite's record for the DOI; unknown when Scite is not configured or does not answer. */
+  scite?(doi: string): Promise<SciteRecord>;
 }
 
 const TIMEOUT_MS = 8000;
@@ -54,6 +57,7 @@ const axiosHttp: DoiHttp = {
     const response = await axios.get(url, { timeout: TIMEOUT_MS, headers: { 'User-Agent': config.discovery.crossrefUserAgent } });
     return response.data as unknown;
   },
+  scite: (doi) => sciteRecordFor(doi),
 };
 
 /** The DOI in a source address, or null. "https://doi.org/10.1000/abc" and "doi:10.1000/abc" both give "10.1000/abc". */
@@ -110,6 +114,13 @@ async function checkOne(doi: string, http: DoiHttp, alreadyResolved = false): Pr
     } catch (err) {
       // No record is not a notice. Many DOIs are not Crossref's (DataCite, for one).
       logger.debug('[doi-resolve] no Crossref record read for a DOI', { doi, err: (err as Error)?.message });
+    }
+    // Scite is a second source for what the publisher's record does not show.
+    // Its silence is not a clean record: an unknown answer adds nothing.
+    if (!notice && http.scite) {
+      const kind = sciteEditorialKind(await http.scite(doi).catch((): SciteRecord => ({ known: false, doi, reason: 'unavailable' })));
+      if (kind === 'retracted') notice = { kind, text: 'Scite records that this work was retracted.' };
+      else if (kind === 'corrected') notice = { kind, text: 'Scite records a correction to this work.' };
     }
   }
   return { doi, status, notice, networkFailure };

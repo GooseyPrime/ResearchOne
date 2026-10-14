@@ -3,6 +3,7 @@ import { SearchProvider } from './searchProvider';
 import { BibliographicDetails, SearchQuery, SearchResultCandidate, isCalendarDay } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
+import { safeFailureRecord } from './providerHttp';
 
 interface ESearchResponse {
   esearchresult?: {
@@ -134,7 +135,7 @@ export class PubmedCentralSearchProvider implements SearchProvider {
         })
         .filter((r): r is NonNullable<typeof r> => r !== null);
     } catch (err) {
-      logger.warn('[discovery] PubMed Central search failed:', err);
+      logger.warn('[discovery] PubMed Central search failed', safeFailureRecord(err));
       query.onFailure?.(err);
       return [];
     }

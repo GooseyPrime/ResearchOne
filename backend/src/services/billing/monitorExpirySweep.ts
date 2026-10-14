@@ -1,7 +1,7 @@
 import { adminQuery } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { createUserNotification } from '../notifications/userNotifications';
-import { patchRemoteParallelMonitorForExpiry } from '../monitoring/parallelMonitorService';
+import { stopRemoteMonitorForExpiry } from '../monitoring/parallelMonitorService';
 import { monitorActiveExpirySql, tryDeductTokenForMonitorRenewal } from './monitorTokenService';
 
 interface ExpiredMonitorRow {
@@ -59,13 +59,14 @@ export async function sweepExpiredLivingReportMonitors(): Promise<number> {
              WHERE id = $1 AND status = 'active'`,
             [row.id]
           );
-          await patchRemoteParallelMonitorForExpiry(row.parallel_monitor_id, { status: 'active' });
+          // Renewed: the remote monitor keeps running; nothing changes at Parallel.
           handled += 1;
           continue;
         }
       }
 
-      await patchRemoteParallelMonitorForExpiry(row.parallel_monitor_id, { status: 'paused' });
+      // Stopped at Parallel first; a cancellation Parallel refused leaves the row active for the next sweep.
+      await stopRemoteMonitorForExpiry(row.parallel_monitor_id);
       await adminQuery(
         `UPDATE report_monitors
          SET status = 'paused', paused_at = NOW(), last_event_at = NOW()

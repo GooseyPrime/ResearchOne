@@ -11,7 +11,7 @@ With `PROVIDER_ROUTING_ENABLED` on, discovery decides what the request is about 
 | Route | Chosen when | Services, in order |
 | --- | --- | --- |
 | scientific | Literature reviews, or medical and scientific words in the request | OpenAlex, Crossref, PubMed Central, ClinicalTrials.gov, arXiv, then the web services |
-| patent | The patent-gap objective, or patent words in the request | USPTO PatentsView, OpenAlex, then the web services |
+| patent | The patent-gap objective, or patent words in the request | USPTO Open Data Portal (when `USPTO_API_KEY` is set), OpenAlex, then the web services |
 | market | Opportunity reports, or business and market words in the request | Parallel, then the web services |
 | code | Software and repository words in the request | The web services, plus one search limited to GitHub |
 | default | None of the above | The web services, OpenAlex, Crossref, plus one search for official and primary records |
@@ -30,7 +30,7 @@ With `PROVIDER_ROUTING_ENABLED` off, discovery uses the web services plus the sp
 
 ### Scholarly-only services
 
-arXiv, PubMed Central, ClinicalTrials.gov and USPTO PatentsView hold only research papers, clinical studies and patents. Each is marked `scholarlyOnly` in the registry. A scholarly-only service is searched only when the request is on a route that lists it, whether `PROVIDER_ROUTING_ENABLED` is on or off. A question about an election, a company or a law never reaches them, whichever specialists its plan schedules. When the specialist mapping would have added one and the request's routes do not list it, the run writes a `providers_held_back` row to `discovery_events`.
+arXiv, PubMed Central, ClinicalTrials.gov and the USPTO Open Data Portal hold only research papers, clinical studies and patents. Each is marked `scholarlyOnly` in the registry. A scholarly-only service is searched only when the request is on a route that lists it, whether `PROVIDER_ROUTING_ENABLED` is on or off. A question about an election, a company or a law never reaches them, whichever specialists its plan schedules. When the specialist mapping would have added one and the request's routes do not list it, the run writes a `providers_held_back` row to `discovery_events`.
 
 Mark a new service `scholarlyOnly` when everything it returns is a scholarly or patent record. OpenAlex and Crossref are not marked: they cover every field and the default route uses them.
 
@@ -46,7 +46,8 @@ The check is on unless `DISCOVERY_RELEVANCE_GATE_ENABLED` is set to `false`. Tha
 
 - **Covers:** general web search tuned for research. Each result comes with page text.
 - **Used for:** every route, as a web service, when `SEARCH_PROVIDER` is `tavily` or `cascade`.
-- **Needs:** `TAVILY_API_KEY`. `TAVILY_BASE_URL` is optional.
+- **Needs:** `TAVILY_API_KEY` (https://app.tavily.com), sent as `Authorization: Bearer`. `TAVILY_BASE_URL` is optional.
+- **Limits:** at most 20 results a request (https://docs.tavily.com/documentation/api-reference/endpoint/search). The run's overall source budget is a separate number.
 - **Good at:** news, organisation pages, reports published on the web.
 - **Not for:** finding scholarly records by DOI. The scholarly catalogues below do that better.
 
@@ -56,6 +57,7 @@ The check is on unless `DISCOVERY_RELEVANCE_GATE_ENABLED` is set to `false`. Tha
 - **Used for:** every route, as a web service, when `SEARCH_PROVIDER` is `brave` or `cascade`. Every challenge run also uses it when the key is set.
 - **Needs:** `SEARCH_PROVIDER_API_KEY`, with `SEARCH_PROVIDER` set to `brave` or `cascade`. The same setting is the generic endpoint's optional key, so with `SEARCH_PROVIDER=generic` it is never treated as a Brave key.
 - **Good at:** a second view of the web, and sensitive topics (such runs search it first).
+- **Limits:** `count` 1 to 20, and a query of at most 600 characters and 75 words (https://api-dashboard.search.brave.com/api-reference/web/search).
 
 ### Generic web search endpoint (`generic`)
 
@@ -67,14 +69,15 @@ The check is on unless `DISCOVERY_RELEVANCE_GATE_ENABLED` is set to `false`. Tha
 
 - **Covers:** business and market information: companies, products, pricing and demand.
 - **Used for:** the market route, first.
-- **Needs:** `PARALLEL_API_KEY`. `PARALLEL_BASE_URL` is optional.
+- **Needs:** `PARALLEL_API_KEY` (https://platform.parallel.ai), sent as `x-api-key`. `PARALLEL_BASE_URL` is optional (default `https://api.parallel.ai/v1`).
+- **Contract:** `POST /v1/search` with `objective`, `search_queries` and `advanced_settings.max_results`; results carry `excerpts` (https://docs.parallel.ai/api-reference/search-beta/search).
 - **Not for:** scholarly or medical questions.
 
 ### OpenAlex (`openalex`)
 
 - **Covers:** a catalogue of scholarly works in every field, with authors, venues and DOIs.
 - **Used for:** the scientific route (first), the patent route (second) and the default route.
-- **Needs:** nothing. `OPENALEX_USER_AGENT` identifies us politely to the service.
+- **Needs:** nothing. Basic queries work without a key at 10 requests a second within a small daily budget. `OPENALEX_API_KEY` (free, https://openalex.org/settings/api) is optional and raises the rate and budget (https://help.openalex.org/api/authentication/). `OPENALEX_USER_AGENT` identifies us to the service.
 - **Good at:** journal articles, with reference details the citation lock can use.
 
 ### Crossref (`crossref`)
@@ -102,11 +105,12 @@ The check is on unless `DISCOVERY_RELEVANCE_GATE_ENABLED` is set to `false`. Tha
 - **Needs:** nothing.
 - **Note:** preprints are not established as peer reviewed. The source-ranking switch ranks them that way.
 
-### USPTO PatentsView (`uspto`)
+### USPTO Open Data Portal (`uspto`)
 
-- **Covers:** granted United States patents, with their claims, inventors and assignees.
-- **Used for:** the patent route, first.
-- **Needs:** nothing.
+- **Covers:** United States patent applications and granted patents: titles, numbers, dates and status. It does not return abstracts or claims; a result is read from its page when it is ingested.
+- **Used for:** the patent route, first, when configured.
+- **Needs:** `USPTO_API_KEY`, a free key from a USPTO.gov account on the Open Data Portal (https://data.uspto.gov/apis/getting-started), sent as `X-API-KEY` to `GET https://api.uspto.gov/api/v1/patent/applications/search`. Without it patent requests use OpenAlex and the web services, and the provider reports itself not configured.
+- **Retired:** the PatentsView API (`api.patentsview.org`) moved to the Open Data Portal (https://data.uspto.gov/support/transition-guide/patentsview) and now redirects to a web page. It is not called.
 
 ### Not search services
 

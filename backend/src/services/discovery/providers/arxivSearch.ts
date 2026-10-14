@@ -4,6 +4,7 @@ import { SearchProvider } from './searchProvider';
 import { BibliographicDetails, SearchQuery, SearchResultCandidate, isCalendarDay } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
+import { safeFailureRecord } from './providerHttp';
 
 interface ArxivEntry {
   id?: string;
@@ -106,7 +107,7 @@ export class ArxivSearchProvider implements SearchProvider {
           };
         });
     } catch (err) {
-      logger.warn('[discovery] arXiv search failed:', err);
+      logger.warn('[discovery] arXiv search failed', safeFailureRecord(err));
       query.onFailure?.(err);
       return [];
     }

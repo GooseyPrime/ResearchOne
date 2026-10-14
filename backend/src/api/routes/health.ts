@@ -29,6 +29,8 @@ type IntegrationCheck = {
   configured: boolean;
   ok: boolean;
   latencyMs?: number;
+  /** False when a key is set but nothing has proved it works. */
+  verified?: boolean;
   reason?: string;
 };
 
@@ -80,24 +82,17 @@ async function timedCheck<T>(fn: () => Promise<T>): Promise<{ ok: boolean; laten
   }
 }
 
-async function probeOptionalIntegration(
-  keyEnvVar: string,
-  healthUrl: string,
-): Promise<IntegrationCheck> {
+/**
+ * An optional integration whose key is set. Neither provider offers a free
+ * request that proves the key: their public `/health` addresses answer 200
+ * without any key, so calling them proved nothing and a wrong key read as
+ * healthy. A set key is reported as configured and not verified; a real call
+ * (a search, a DOI check) shows whether it works, and reports its own failure.
+ */
+function optionalIntegration(keyEnvVar: string): IntegrationCheck {
   const key = process.env[keyEnvVar]?.trim();
-  if (!key) {
-    return { configured: false, ok: true, reason: `${keyEnvVar} not set` };
-  }
-  const started = Date.now();
-  try {
-    await axios.get(healthUrl, {
-      timeout: 5000,
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    return { configured: true, ok: true, latencyMs: Date.now() - started };
-  } catch {
-    return { configured: true, ok: false, latencyMs: Date.now() - started, reason: 'probe failed' };
-  }
+  if (!key) return { configured: false, ok: true, reason: `${keyEnvVar} not set` };
+  return { configured: true, ok: true, verified: false, reason: `${keyEnvVar} is set; no free check proves the key` };
 }
 
 export async function buildHealth(req: { app: { get: (k: string) => unknown } }) {
@@ -143,10 +138,8 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   const websocketCheck: Check = { ok: Boolean(req.app.get('io')) };
   const discoveryCheck = getDiscoveryReadinessCheck();
 
-  const [parallelCheck, sciteCheck] = await Promise.all([
-    probeOptionalIntegration('PARALLEL_API_KEY', 'https://api.parallel.ai/health'),
-    probeOptionalIntegration('SCITE_API_KEY', 'https://api.scite.ai/health'),
-  ]);
+  const parallelCheck = optionalIntegration('PARALLEL_API_KEY');
+  const sciteCheck = optionalIntegration('SCITE_API_KEY');
 
   const dbRow = dbProbe.value;
   const applicationRolePresent = dbRow?.application_role_exists ?? false;

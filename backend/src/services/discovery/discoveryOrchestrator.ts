@@ -46,6 +46,7 @@ import { effectiveIngestCap } from './sourceBudget';
 import { callRoleModel } from '../openrouter/openrouterService';
 import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
+import { safeFailureRecord } from './providers/providerHttp';
 import { withPreamble, withStandardPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import {
@@ -1301,11 +1302,9 @@ export function withExtraQueries(planned: readonly string[], extras: readonly st
  * What is kept about a provider failure: the kind of error and the HTTP status.
  * Not the message, which can carry a request address and, with it, a key.
  */
+/** The kind of a provider failure and its HTTP status; never its message, headers or body. */
 export function providerErrorRecord(reason: unknown): { error_kind: string; http_status?: number } {
-  const err = (reason ?? {}) as { code?: unknown; name?: unknown; response?: { status?: unknown } };
-  const kind = typeof err.code === 'string' && err.code ? err.code : typeof err.name === 'string' && err.name ? err.name : 'unknown';
-  const status = typeof err.response?.status === 'number' ? err.response.status : undefined;
-  return status === undefined ? { error_kind: kind } : { error_kind: kind, http_status: status };
+  return safeFailureRecord(reason);
 }
 
 const persistDiscoveryEvent = recordDiscoveryEvent;

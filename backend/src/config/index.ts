@@ -1,4 +1,4 @@
-import { switchEnabled, switchEnabledByDefault } from './runFlags';
+import { switchEnabledByDefault } from './runFlags';
 import path from 'path';
 import { loadEnv, getRepoRoot } from '../bootstrap/loadEnv';
 import {
@@ -141,6 +141,8 @@ const config = {
   parallelMonitor: {
     apiKey: process.env.PARALLEL_MONITOR_API_KEY || process.env.PARALLEL_API_KEY || '',
     webhookSecret: process.env.PARALLEL_MONITOR_WEBHOOK_SECRET || '',
+    /** The public address Parallel posts monitor events to, e.g. https://<api host>/api/webhooks/parallel-monitor. A monitor is not registered without it. */
+    webhookUrl: (process.env.PARALLEL_MONITOR_WEBHOOK_URL || '').trim(),
     baseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
   },
 
@@ -336,8 +338,12 @@ const config = {
     parallelApiKey: process.env.PARALLEL_API_KEY || '',
     parallelBaseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
     sciteApiKey: process.env.SCITE_API_KEY || '',
-    sciteBaseUrl: (process.env.SCITE_BASE_URL || 'https://api.scite.ai/v1').replace(/\/+$/, ''),
+    sciteBaseUrl: (process.env.SCITE_BASE_URL || 'https://api.scite.ai').replace(/\/+$/, ''),
     openAlexUserAgent: process.env.OPENALEX_USER_AGENT || 'ResearchOne/1.0 (mailto:hello@researchone.io)',
+    /** Optional. OpenAlex answers basic queries without a key (10 requests a second, a small daily budget); a free key raises both (https://help.openalex.org/api/authentication/). */
+    openAlexApiKey: process.env.OPENALEX_API_KEY || '',
+    /** USPTO Open Data Portal key for patent search (https://data.uspto.gov/apis/getting-started). Without it patent search is not configured. */
+    usptoApiKey: process.env.USPTO_API_KEY || '',
     crossrefUserAgent: process.env.CROSSREF_USER_AGENT || 'ResearchOne/1.0 (mailto:hello@researchone.io)',
   },
 
@@ -624,19 +630,21 @@ export { runWithFlags, switchEnabled } from './runFlags';
  * and no environment value changes what a report looks like.
  */
 /**
- * Slice 4 part 3. DOI resolution and retraction checking. Unset is off. The
- * check acts on the passages a report may cite.
+ * Slice 4 part 3. DOI resolution and retraction checking. On unless
+ * DOI_RESOLVE_ENABLED is "false" (Brandon, 14 Oct 2026: completed features
+ * run). The check acts on the passages a report may cite.
  */
 export function doiResolveEnabled(): boolean {
-  return switchEnabled('DOI_RESOLVE_ENABLED');
+  return switchEnabledByDefault('DOI_RESOLVE_ENABLED');
 }
 /**
- * Slice 7. Search providers chosen by what the request is about. Unset is off:
- * discovery then uses the configured web provider plus the specialist mapping,
- * with the old query and source defaults.
+ * Slice 7. Search providers chosen by what the request is about. On unless
+ * PROVIDER_ROUTING_ENABLED is "false" (Brandon, 14 Oct 2026: completed features
+ * run). Set to "false", discovery uses the configured web provider plus the
+ * specialist mapping, with the old query and source defaults.
  */
 export function providerRoutingEnabled(): boolean {
-  return switchEnabled('PROVIDER_ROUTING_ENABLED');
+  return switchEnabledByDefault('PROVIDER_ROUTING_ENABLED');
 }
 /**
  * The relevance check on what discovery finds and what retrieval returns

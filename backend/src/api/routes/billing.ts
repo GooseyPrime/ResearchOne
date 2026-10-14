@@ -1,3 +1,4 @@
+import { MONITORING_UNAVAILABLE, missingMonitorSettings } from '../../services/monitoring/parallelMonitorClient';
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
 import {
@@ -167,6 +168,11 @@ router.post('/monitor-tokens/checkout', async (req, res, next) => {
     const userId = req.auth?.userId;
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    // Tokens buy monitor time; they are not sold while a monitor cannot run.
+    if (missingMonitorSettings().length > 0) {
+      res.status(503).json(MONITORING_UNAVAILABLE);
       return;
     }
     const packageId = String(req.body?.packageId ?? '').trim();
