@@ -338,6 +338,10 @@ const config = {
     sciteApiKey: process.env.SCITE_API_KEY || '',
     sciteBaseUrl: (process.env.SCITE_BASE_URL || 'https://api.scite.ai/v1').replace(/\/+$/, ''),
     openAlexUserAgent: process.env.OPENALEX_USER_AGENT || 'ResearchOne/1.0 (mailto:hello@researchone.io)',
+    /** Optional. OpenAlex answers basic queries without a key (10 requests a second, a small daily budget); a free key raises both (https://help.openalex.org/api/authentication/). */
+    openAlexApiKey: process.env.OPENALEX_API_KEY || '',
+    /** USPTO Open Data Portal key for patent search (https://data.uspto.gov/apis/getting-started). Without it patent search is not configured. */
+    usptoApiKey: process.env.USPTO_API_KEY || '',
     crossrefUserAgent: process.env.CROSSREF_USER_AGENT || 'ResearchOne/1.0 (mailto:hello@researchone.io)',
   },
 

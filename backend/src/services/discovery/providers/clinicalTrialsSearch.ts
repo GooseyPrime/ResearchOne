@@ -3,6 +3,7 @@ import { SearchProvider } from './searchProvider';
 import { SearchQuery, SearchResultCandidate } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
+import { safeFailureRecord } from './providerHttp';
 
 interface CTStudy {
   protocolSection?: {
@@ -72,7 +73,7 @@ export class ClinicalTrialsSearchProvider implements SearchProvider {
         })
         .filter((r): r is NonNullable<typeof r> => r !== null);
     } catch (err) {
-      logger.warn('[discovery] ClinicalTrials.gov search failed:', err);
+      logger.warn('[discovery] ClinicalTrials.gov search failed', safeFailureRecord(err));
       query.onFailure?.(err);
       return [];
     }

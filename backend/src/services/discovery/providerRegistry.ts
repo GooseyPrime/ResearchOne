@@ -149,12 +149,13 @@ export const PROVIDER_REGISTRY = {
     build: () => new ArxivSearchProvider(),
   },
   uspto: {
-    title: 'USPTO PatentsView',
-    covers: 'granted United States patents, their claims, inventors and assignees',
+    title: 'USPTO Open Data Portal',
+    covers: 'United States patent applications and granted patents: titles, numbers, dates and status',
     routes: { patent: 10 },
     scholarlyOnly: true,
-    needs: [],
-    isConfigured: always,
+    // A free key from a USPTO.gov account (https://data.uspto.gov/apis/getting-started).
+    needs: ['USPTO_API_KEY'],
+    isConfigured: () => Boolean(config.discovery.usptoApiKey),
     build: () => new UsptoSearchProvider(),
   },
 } as const satisfies Record<string, ProviderEntry>;

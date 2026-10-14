@@ -2,6 +2,7 @@ import { tierOfStoredSource } from '../authority/authorityTier';
 import { query } from '../../db/pool';
 import { judgeQuoteSupports } from './quoteSupportsJudge';
 import { judgeReportQuality } from './reportQualityJudge';
+import { scorePairwiseForTask } from './pairwiseReference';
 import { scoreStoredReport, applyJudgeGate, type ContradictionLink, type EvalCitation, type EvalScoreInput, type EvalScores } from './scoreReport';
 import { loadEvalTasks, type EvalTask, type FixtureDocument } from './taskSet';
 
@@ -78,13 +79,17 @@ export async function runHarness(
       stored.citations.map((row) => ({ sentence: row.claimText ?? '', quote: row.chunkQuote }))
     );
     const reportQuality = await judgeReportQuality(stored.reportMarkdown);
-    const scores = applyJudgeGate(
-      scoreStoredReport({
-        ...buildScoreInput(task, stored, judged.score, judged.notJudged),
-        reportQuality: reportQuality?.mean ?? null,
-      }),
-      reportQuality
-    );
+    const pairwise = await scorePairwiseForTask(task, stored.reportMarkdown);
+    const scores = {
+      ...applyJudgeGate(
+        scoreStoredReport({
+          ...buildScoreInput(task, stored, judged.score, judged.notJudged),
+          reportQuality: reportQuality?.mean ?? null,
+        }),
+        reportQuality
+      ),
+      ...pairwise,
+    };
     await query(
       `INSERT INTO eval_results (run_id, task_id, scores, git_sha) VALUES ($1, $2, $3::jsonb, $4)`,
       [started.runId, task.id, JSON.stringify(scores), process.env.GIT_SHA ?? null]

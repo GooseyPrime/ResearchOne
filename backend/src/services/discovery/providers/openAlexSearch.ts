@@ -3,6 +3,7 @@ import { SearchProvider } from './searchProvider';
 import { BibliographicDetails, SearchQuery, SearchResultCandidate, isCalendarDay } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
+import { ProviderResponseError, clampCount, jsonObjectOrThrow, safeFailureRecord } from './providerHttp';
 
 interface OpenAlexWork {
   id?: string;
@@ -45,9 +46,6 @@ export function openAlexBibliographic(work: OpenAlexWork): BibliographicDetails 
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-interface OpenAlexResponse {
-  results?: OpenAlexWork[];
-}
 
 function reconstructAbstract(invertedIndex: Record<string, number[]> | undefined): string {
   if (!invertedIndex) return '';
@@ -75,12 +73,14 @@ export class OpenAlexSearchProvider implements SearchProvider {
     const userAgent = config.discovery.openAlexUserAgent;
 
     try {
-      const response = await axios.get<OpenAlexResponse>(
+      const response = await axios.get<unknown>(
         'https://api.openalex.org/works',
         {
           params: {
             search: query.text,
-            per_page: maxResults,
+            per_page: clampCount(maxResults, 1, 200, 25),
+            // Optional: OpenAlex serves basic queries without a key; a key raises the rate and daily budget.
+            ...(config.discovery.openAlexApiKey ? { api_key: config.discovery.openAlexApiKey } : {}),
           },
           headers: {
             'User-Agent': userAgent,
@@ -89,7 +89,9 @@ export class OpenAlexSearchProvider implements SearchProvider {
         },
       );
 
-      const results = response.data.results ?? [];
+      const body = jsonObjectOrThrow(response.data, 'OpenAlex');
+      if (!Array.isArray(body.results)) throw new ProviderResponseError('unexpected_shape', 'OpenAlex');
+      const results = body.results as OpenAlexWork[];
       return results
         .filter((w) => w.id || w.doi)
         .slice(0, maxResults)
@@ -111,7 +113,7 @@ export class OpenAlexSearchProvider implements SearchProvider {
           };
         });
     } catch (err) {
-      logger.warn('[discovery] OpenAlex search failed:', err);
+      logger.warn('[discovery] OpenAlex search failed', safeFailureRecord(err));
       query.onFailure?.(err);
       return [];
     }
