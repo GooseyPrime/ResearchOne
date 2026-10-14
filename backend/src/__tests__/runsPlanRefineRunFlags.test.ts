@@ -5,7 +5,7 @@
  */
 import express from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   queryOne: vi.fn(),
@@ -43,6 +43,22 @@ vi.mock('../services/billing/walletReservations', () => ({ releaseHold: vi.fn() 
 import runsRouter from '../api/routes/runs';
 import { doiResolveEnabled, providerRoutingEnabled } from '../config';
 import { getGatePlanRowForRun } from '../services/planning/planWriteService';
+
+// These tests read the three finished-feature switches as switched off for the
+// process, as they were before 14 Oct 2026; since then unset is on. A test that
+// wants one on sets it, or records it for the run.
+const FINISHED_FEATURES_OFF = ['AUTHORITY_TIERS_ENABLED', 'DOI_RESOLVE_ENABLED', 'PROVIDER_ROUTING_ENABLED'] as const;
+const finishedFeaturesBefore = Object.fromEntries(FINISHED_FEATURES_OFF.map((name) => [name, process.env[name]]));
+beforeEach(() => {
+  for (const name of FINISHED_FEATURES_OFF) process.env[name] = 'false';
+});
+afterEach(() => {
+  for (const name of FINISHED_FEATURES_OFF) {
+    if (finishedFeaturesBefore[name] === undefined) delete process.env[name];
+    else process.env[name] = finishedFeaturesBefore[name];
+  }
+});
+
 
 const RUN_ID = '00000000-0000-4000-8000-000000000123';
 const PLAN = { intent: { id: 'reference_lookup' }, topicAnalysis: {}, orchestrationProfile: {}, sourceStrategy: {}, outputShape: {}, estimatedCost: {} };

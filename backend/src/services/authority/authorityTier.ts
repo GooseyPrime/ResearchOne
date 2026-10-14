@@ -3,13 +3,13 @@
  * Deterministic: the same provider, kind and address always give the same tier.
  */
 import { AUTHORITY_RULES, DEFAULT_AUTHORITY_TIER, type AuthorityRule, type AuthoritySignals, type AuthorityTier } from '../../config/authorityTiers';
-import { switchEnabled } from '../../config/runFlags';
+import { switchEnabledByDefault } from '../../config/runFlags';
 
 export type { AuthorityTier, AuthoritySignals };
 
-/** Slice 6. Unset is off. */
+/** Slice 6. On unless AUTHORITY_TIERS_ENABLED is "false" (Brandon, 14 Oct 2026: completed features run). */
 export function authorityTiersEnabled(): boolean {
-  return switchEnabled('AUTHORITY_TIERS_ENABLED');
+  return switchEnabledByDefault('AUTHORITY_TIERS_ENABLED');
 }
 
 interface Address {

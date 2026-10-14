@@ -38,6 +38,22 @@ vi.mock('../queue/queues', () => ({
 import { runWithFlags } from '../config/runFlags';
 import { AUTHORITY_TIER_RETRY_DELAYS_MS, recordAuthorityTier, runIngestionJob, tierForIngest, tierForStoredDuplicate } from '../services/ingestion/ingestionService';
 
+// These tests read the three finished-feature switches as switched off for the
+// process, as they were before 14 Oct 2026; since then unset is on. A test that
+// wants one on sets it, or records it for the run.
+const FINISHED_FEATURES_OFF = ['AUTHORITY_TIERS_ENABLED', 'DOI_RESOLVE_ENABLED', 'PROVIDER_ROUTING_ENABLED'] as const;
+const finishedFeaturesBefore = Object.fromEntries(FINISHED_FEATURES_OFF.map((name) => [name, process.env[name]]));
+beforeEach(() => {
+  for (const name of FINISHED_FEATURES_OFF) process.env[name] = 'false';
+});
+afterEach(() => {
+  for (const name of FINISHED_FEATURES_OFF) {
+    if (finishedFeaturesBefore[name] === undefined) delete process.env[name];
+    else process.env[name] = finishedFeaturesBefore[name];
+  }
+});
+
+
 const job = (extra: Record<string, unknown> = {}) =>
   runIngestionJob(
     {
@@ -62,10 +78,10 @@ describe('recording a source\'s authority tier at ingest', () => {
     h.failTier = '';
     h.failTimes = Infinity;
     h.storedUrl = null;
-    delete process.env.AUTHORITY_TIERS_ENABLED;
+    process.env.AUTHORITY_TIERS_ENABLED = 'false';
   });
   afterEach(() => {
-    delete process.env.AUTHORITY_TIERS_ENABLED;
+    process.env.AUTHORITY_TIERS_ENABLED = 'false';
   });
 
   it('writes nothing about tiers with the switch off', async () => {

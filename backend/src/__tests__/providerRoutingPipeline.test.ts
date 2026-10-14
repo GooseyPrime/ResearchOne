@@ -87,6 +87,22 @@ import { runDiscoveryOrchestrator } from '../services/discovery/discoveryOrchest
 import { config, discoveryIngestFloor, discoveryQueryBudget, runWithFlags } from '../config';
 import { ANOMALY_QUERY_SUFFIX } from '../services/discovery/deterministicDiscoveryQueries';
 
+// These tests read the three finished-feature switches as switched off for the
+// process, as they were before 14 Oct 2026; since then unset is on. A test that
+// wants one on sets it, or records it for the run.
+const FINISHED_FEATURES_OFF = ['AUTHORITY_TIERS_ENABLED', 'DOI_RESOLVE_ENABLED', 'PROVIDER_ROUTING_ENABLED'] as const;
+const finishedFeaturesBefore = Object.fromEntries(FINISHED_FEATURES_OFF.map((name) => [name, process.env[name]]));
+beforeEach(() => {
+  for (const name of FINISHED_FEATURES_OFF) process.env[name] = 'false';
+});
+afterEach(() => {
+  for (const name of FINISHED_FEATURES_OFF) {
+    if (finishedFeaturesBefore[name] === undefined) delete process.env[name];
+    else process.env[name] = finishedFeaturesBefore[name];
+  }
+});
+
+
 type Settings = { enabled: boolean; provider: string; ingestionWaitTimeoutMs: number; providerApiKey: string; tavilyApiKey: string; parallelApiKey: string; providerBaseUrl: string };
 const was: Settings = {
   enabled: config.discovery.enabled,

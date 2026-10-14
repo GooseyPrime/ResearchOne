@@ -1,9 +1,25 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { flagForRun, flagValueForRun, UnknownFlagError } from '../services/eval/flagOverride';
 import { fixtureFiles, runHarness, type EvalTransport } from '../services/eval/runHarness';
 import { summarizeScores } from '../services/eval/taskSet';
 import { QUOTE_SUPPORTS_MODEL, QUOTE_SUPPORTS_PROMPT } from '../services/eval/quoteSupportsPrompt';
 import type { EvalTask } from '../services/eval/taskSet';
+
+// These tests read the three finished-feature switches as switched off for the
+// process, as they were before 14 Oct 2026; since then unset is on. A test that
+// wants one on sets it, or records it for the run.
+const FINISHED_FEATURES_OFF = ['AUTHORITY_TIERS_ENABLED', 'DOI_RESOLVE_ENABLED', 'PROVIDER_ROUTING_ENABLED'] as const;
+const finishedFeaturesBefore = Object.fromEntries(FINISHED_FEATURES_OFF.map((name) => [name, process.env[name]]));
+beforeEach(() => {
+  for (const name of FINISHED_FEATURES_OFF) process.env[name] = 'false';
+});
+afterEach(() => {
+  for (const name of FINISHED_FEATURES_OFF) {
+    if (finishedFeaturesBefore[name] === undefined) delete process.env[name];
+    else process.env[name] = finishedFeaturesBefore[name];
+  }
+});
+
 
 vi.mock('../db/pool', () => ({
   query: vi.fn().mockResolvedValue([]),
@@ -15,8 +31,10 @@ vi.mock('../services/openrouter/openrouterService', () => ({
 
 describe('flag lookup', () => {
   it('uses the config default, then the recorded override', async () => {
-    expect(flagForRun('AUTHORITY_TIERS_ENABLED', null)).toBe(false);
-    expect(flagForRun('AUTHORITY_TIERS_ENABLED', { AUTHORITY_TIERS_ENABLED: true })).toBe(true);
+    // The finished features are on by default (14 Oct 2026); unbuilt slices are off.
+    expect(flagForRun('AUTHORITY_TIERS_ENABLED', null)).toBe(true);
+    expect(flagForRun('CHALLENGE_LEDGER_ENABLED', null)).toBe(false);
+    expect(flagForRun('AUTHORITY_TIERS_ENABLED', { AUTHORITY_TIERS_ENABLED: false })).toBe(false);
     const { query } = await import('../db/pool');
     vi.mocked(query).mockResolvedValueOnce([{ flags: { AUTHORITY_TIERS_ENABLED: true } }]);
     await expect(flagValueForRun('run-1', 'AUTHORITY_TIERS_ENABLED')).resolves.toBe(true);

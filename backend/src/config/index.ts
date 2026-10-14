@@ -1,4 +1,4 @@
-import { switchEnabled, switchEnabledByDefault } from './runFlags';
+import { switchEnabledByDefault } from './runFlags';
 import path from 'path';
 import { loadEnv, getRepoRoot } from '../bootstrap/loadEnv';
 import {
@@ -630,19 +630,21 @@ export { runWithFlags, switchEnabled } from './runFlags';
  * and no environment value changes what a report looks like.
  */
 /**
- * Slice 4 part 3. DOI resolution and retraction checking. Unset is off. The
- * check acts on the passages a report may cite.
+ * Slice 4 part 3. DOI resolution and retraction checking. On unless
+ * DOI_RESOLVE_ENABLED is "false" (Brandon, 14 Oct 2026: completed features
+ * run). The check acts on the passages a report may cite.
  */
 export function doiResolveEnabled(): boolean {
-  return switchEnabled('DOI_RESOLVE_ENABLED');
+  return switchEnabledByDefault('DOI_RESOLVE_ENABLED');
 }
 /**
- * Slice 7. Search providers chosen by what the request is about. Unset is off:
- * discovery then uses the configured web provider plus the specialist mapping,
- * with the old query and source defaults.
+ * Slice 7. Search providers chosen by what the request is about. On unless
+ * PROVIDER_ROUTING_ENABLED is "false" (Brandon, 14 Oct 2026: completed features
+ * run). Set to "false", discovery uses the configured web provider plus the
+ * specialist mapping, with the old query and source defaults.
  */
 export function providerRoutingEnabled(): boolean {
-  return switchEnabled('PROVIDER_ROUTING_ENABLED');
+  return switchEnabledByDefault('PROVIDER_ROUTING_ENABLED');
 }
 /**
  * The relevance check on what discovery finds and what retrieval returns

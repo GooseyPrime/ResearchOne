@@ -1,5 +1,7 @@
 /**
- * Flags later slices may turn on. Unset and unknown values are off.
+ * Flags a run may record. The three finished features (authority tiers, DOI
+ * resolution, provider routing) are on by default since 14 Oct 2026, as they
+ * are in production; the flags of unbuilt slices are off. Unknown names are off.
  *
  * The report layout has no flag: BASELINE_LAYER_ENABLED, CITATION_LOCK_ENABLED
  * and READER_VIEW_ENABLED were removed on 8 Oct 2026, and a value recorded under
@@ -19,9 +21,9 @@ export type HarnessFlagName = (typeof HARNESS_FLAG_NAMES)[number];
 
 export function harnessFlagDefaults(): Record<HarnessFlagName, boolean> {
   return {
-    AUTHORITY_TIERS_ENABLED: false,
-    DOI_RESOLVE_ENABLED: false,
-    PROVIDER_ROUTING_ENABLED: false,
+    AUTHORITY_TIERS_ENABLED: true,
+    DOI_RESOLVE_ENABLED: true,
+    PROVIDER_ROUTING_ENABLED: true,
     CHALLENGE_LEDGER_ENABLED: false,
     RESEARCH_TREE_ENABLED: false,
     OUTLINE_OPS_ENABLED: false,
