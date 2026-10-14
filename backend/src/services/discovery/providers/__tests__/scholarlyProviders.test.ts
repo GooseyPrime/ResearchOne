@@ -107,9 +107,8 @@ describe('scholarly providers', () => {
   describe('scite scholarly', () => {
     it('exports three metadata functions', async () => {
       const mod = await import('../sciteScholarly');
-      expect(mod.getInstitutionalStatus).toBeTypeOf('function');
-      expect(mod.getCitationCounts).toBeTypeOf('function');
-      expect(mod.getContrastingPaperDois).toBeTypeOf('function');
+      expect(mod.sciteRecordFor).toBeTypeOf('function');
+      expect(mod.sciteEditorialKind).toBeTypeOf('function');
     });
   });
 });

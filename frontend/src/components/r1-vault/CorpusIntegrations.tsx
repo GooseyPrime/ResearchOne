@@ -10,11 +10,11 @@ import { Database, BookOpen, FlaskConical, FileText, Stethoscope } from 'lucide-
 // Data source definitions with icons and metadata
 const corpusSources = [
 {
-  id: 'scite',
-  name: 'Scite.ai',
-  description: 'Smart citation context analysis',
+  id: 'openalex',
+  name: 'OpenAlex',
+  description: 'Scholarly works in every field, with authors and DOIs',
   icon: BookOpen,
-  category: 'Citation Intelligence'
+  category: 'Scholarly Catalogue'
 },
 {
   id: 'pubmed',
@@ -31,11 +31,11 @@ const corpusSources = [
   category: 'Scientific Pre-prints'
 },
 {
-  id: 'uspto',
-  name: 'USPTO Patents',
-  description: 'United States patent database',
+  id: 'crossref',
+  name: 'Crossref',
+  description: 'The DOI registry for articles, books and reports',
   icon: FileText,
-  category: 'Intellectual Property'
+  category: 'Publisher Records'
 },
 {
   id: 'clinicaltrials',
@@ -112,7 +112,7 @@ export function CorpusIntegrations() {
 
         {/* Bottom note */}
         <p data-ev-id="ev_d860d38112" className="mt-8 text-center text-xs text-r1-muted/60 font-mono">
-          CORPUS_STATUS: ACTIVE · RETRIEVAL_MODE: HYBRID · CORROBORATION: MULTI_SOURCE
+          Searched when a question needs them, alongside the open web.
         </p>
       </div>
     </section>);
