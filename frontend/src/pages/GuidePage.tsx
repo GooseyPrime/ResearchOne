@@ -44,7 +44,7 @@ const GUIDE_SECTIONS: readonly GuideSection[] = [
       'Compare: Compare three EHR products for a 40-person clinic with a 12-month budget horizon.',
       'Verify: Evaluate the key factual statements in this article and separate the confirmed, the contradicted, the unsupported and the unresolved.',
       'Opportunity: Identify underserved problems in residential heat-pump installation in the US Northeast.',
-      'Implementation: Create an evidence-based SOC 2 readiness implementation plan for a seed-stage SaaS startup.',
+      'Implementation: Create a SOC 2 readiness implementation plan for a seed-stage SaaS startup.',
       'Quantitative: Extract reported metrics from these studies and compare outcomes on a normalized basis.',
     ],
   },
@@ -86,10 +86,10 @@ const GUIDE_SECTIONS: readonly GuideSection[] = [
   },
   {
     id: 'reading-results',
-    title: 'Reading evidence, citations, uncertainty, and contradictions',
+    title: 'Reading findings, citations, uncertainty, and contradictions',
     bullets: [
       'Citations support nearby statements but do not guarantee source correctness.',
-      'ResearchOne separates evidence, interpretation, uncertainty, and contradiction when available.',
+      'ResearchOne separates what the sources say, interpretation, uncertainty, and contradiction when available.',
       'Conflicting sources are surfaced so you can review tradeoffs directly.',
     ],
   },

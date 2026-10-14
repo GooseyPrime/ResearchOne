@@ -48,6 +48,7 @@ import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { safeFailureRecord } from './providers/providerHttp';
+import { withPreamble, withStandardPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import {
   config,
@@ -193,6 +194,16 @@ Output JSON with this exact schema:
  * the planner judged the request covered, proposed nothing new, or could not
  * be read on either model. Each outcome is logged and recorded with the run.
  */
+/**
+ * The preamble a discovery planner call is written under. The challenge
+ * preamble (falsification, counter-modelling) is for fact-checks,
+ * investigations and story verification; every other run plans its searches
+ * under the standard one (14 Oct 2026). Neither preamble is changed here.
+ */
+export function discoveryPreamble(layer2: boolean): (prompt: string) => string {
+  return layer2 ? withPreamble : withStandardPreamble;
+}
+
 export async function planGapQueries(args: {
   runId: string;
   round: number;
@@ -207,6 +218,8 @@ export async function planGapQueries(args: {
     researchObjective?: ResearchObjective;
     byokApiKeyOverride?: string;
   };
+  /** A fact-check, investigation or story verification. Only these plan searches under the challenge preamble. */
+  layer2?: boolean;
 }): Promise<string[] | null> {
   const sample = args.found.slice(0, 30).map((c, i) => ({
     n: i + 1,
@@ -219,7 +232,7 @@ export async function planGapQueries(args: {
       role: 'planner',
       ...args.model,
       messages: [
-        { role: 'system', content: withPreamble(DISCOVERY_GAP_PROMPT.replace('{sources}', args.sources)) },
+        { role: 'system', content: discoveryPreamble(args.layer2 === true)(DISCOVERY_GAP_PROMPT.replace('{sources}', args.sources)) },
         {
           role: 'user',
           content:
@@ -415,7 +428,7 @@ async function runDiscoveryOrchestratorInner(args: {
       researchObjective,
       byokApiKeyOverride,
       messages: [
-        { role: 'system', content: withPreamble(DISCOVERY_PLANNER_PROMPT) },
+        { role: 'system', content: discoveryPreamble(routingBrief?.layer2 === true)(DISCOVERY_PLANNER_PROMPT) },
         {
           role: 'user',
           // WO-AA F-4: this call is load-bearing — if it fails, discovery
@@ -720,7 +733,7 @@ async function runDiscoveryOrchestratorInner(args: {
         researchObjective,
         byokApiKeyOverride,
         messages: [
-          { role: 'system', content: withPreamble(DISCOVERY_FOLLOWUP_PROMPT) },
+          { role: 'system', content: discoveryPreamble(routingBrief?.layer2 === true)(DISCOVERY_FOLLOWUP_PROMPT) },
           {
             role: 'user',
             content: `Research Query: ${researchQuery}\n\nRound 1 candidates (${allCandidates.length} total, sample below):\n${JSON.stringify(round1Sample, null, 2)}\n\nRound 1 queries already executed (do not duplicate):\n${queriesExecuted.map((q) => `- ${q}`).join('\n')}\n\nPropose follow-up queries that materially expand the investigation. Output JSON only.`,
@@ -789,6 +802,7 @@ async function runDiscoveryOrchestratorInner(args: {
         found: allCandidates,
         maxQueries: Math.min(3, remainingBudget),
         model: { engineVersion, researchObjective, byokApiKeyOverride },
+        layer2: routingBrief?.layer2 === true,
       });
       if (!planned) break;
       extraQueries = planned;
@@ -1125,6 +1139,7 @@ async function runDiscoveryOrchestratorInner(args: {
         found: relevantFound,
         maxQueries: RELEVANCE_GAP_QUERIES_PER_ROUND,
         model: { engineVersion, researchObjective, byokApiKeyOverride },
+        layer2: routingBrief?.layer2 === true,
       });
       if (!planned) break;
       // These rounds may go past the run's ordinary query budget, by their own

@@ -11,7 +11,7 @@ const ENTRIES = [
   {
     version: '0.9.x',
     date: '2026',
-    summary: 'Ongoing pipeline, Living Reports, and tiered evidence model — see methodology for current stage names.',
+    summary: 'Ongoing pipeline, Living Reports, and tiered source model — see methodology for current stage names.',
   },
 ] as const;
 

@@ -3,7 +3,7 @@
  * Slice 5 acceptance: the reading page.
  * - A fixture report holding tier tags, [Chunk N] markers, internal step names,
  *   `under_review` and the old front-matter text shows none of them on the
- *   Report tab; the Evidence tab shows strength in words.
+ *   Report tab; the Findings tab shows strength in words.
  * - Hovering a citation shows the quoted passage.
  * - A legacy fixture with unmapped [Chunk N] markers renders no "Chunk".
  */
@@ -232,7 +232,7 @@ describe('the page has one view', () => {
 describe('the other tabs', () => {
   it('Evidence shows each finding with its strength in words, its passage and its source', () => {
     render(<ReaderView report={report} evidence={evidence} />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Evidence' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Findings' }));
     const panel = screen.getByRole('tabpanel');
     expect(panel.textContent).toContain('US overnight costs reached about $8,000 per kilowatt.');
     expect(panel.textContent).toContain('Strongly supported by the sources');
@@ -243,7 +243,7 @@ describe('the other tabs', () => {
 
   it('Evidence lists each cited passage with its source when the run stored no findings', () => {
     render(<ReaderView report={report} evidence={{ ...evidence, findings: [] }} />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Evidence' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Findings' }));
     const panel = screen.getByRole('tabpanel');
     expect(panel.textContent).toContain('Each passage this report cites');
     expect(panel.textContent).toContain('costs rose sharply after 1979');
@@ -271,7 +271,7 @@ describe('the other tabs', () => {
   it('a report with no Challenge section has no Challenge tab', () => {
     const plain = { ...report, sections: report.sections!.slice(0, 5) };
     render(<ReaderView report={plain} evidence={evidence} />);
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Report', 'Evidence', 'Sources', 'How this was researched']);
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Report', 'Findings', 'Sources', 'How this was researched']);
   });
 });
 

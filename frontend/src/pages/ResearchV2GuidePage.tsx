@@ -92,7 +92,7 @@ const MODES: Array<{
     icon: GitBranch,
     color: 'text-research-blue',
     definition:
-      'A meta-analytical type designed to find underlying frameworks across sparse, heterogeneous, or weakly connected evidence sets.',
+      'A meta-analytical type designed to find underlying frameworks across sparse, heterogeneous, or weakly connected sets of sources.',
     capabilities: [
       'Large-scale pattern recognition',
       'Statistical correlation of margin data',

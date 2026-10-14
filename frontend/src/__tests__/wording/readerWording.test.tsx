@@ -29,6 +29,9 @@ const SRC = join(__dirname, '../..');
 const ALLOWED: Array<{ file: string; phrase: RegExp; why: string }> = [
   { file: 'pages/TermsPage.tsx', phrase: /We do not claim|ALL CLAIMS ARISING|PRECEDING THE CLAIM|against any claims/, why: 'legal wording: a claim in law, not a finding of a report' },
   { file: 'pages/ResearchV2GuidePage.tsx', phrase: /patent claims/, why: 'a patent claim is the legal term for what a patent protects' },
+  { file: 'components/landing/WhatCompetitorsActuallySay.tsx', phrase: /\b[Ee]vidence\b/, why: "the section is about the word itself: competitors' own words, quoted, and the reply that papers are sources, not evidence" },
+  { file: 'pages/ComparePage.tsx', phrase: /call retrieved papers &quot;evidence\.&quot; We don&apos;t/, why: 'a note that ResearchOne does not call papers evidence' },
+  { file: 'lib/researchone/reportLabels.ts', phrase: /strong\[_ \]evidence/, why: 'a pattern that strips an old grade label out of stored reports; it is never shown' },
 ];
 
 /**
@@ -273,7 +276,7 @@ describe('the public sample report', () => {
       'Limits of this report',
       'References',
     ]);
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Report', 'Evidence', 'Sources', 'How this was researched']);
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Report', 'Findings', 'Sources', 'How this was researched']);
     const text = document.body.textContent ?? '';
     expect(text).not.toMatch(/\bclaims?\b/i);
     expect(text).not.toMatch(/CLAIMS_TABLE|CLAIM_[AB]|EXECUTIVE_SUMMARY|CONFIDENCE|verified|corroborated|contested|tier/i);

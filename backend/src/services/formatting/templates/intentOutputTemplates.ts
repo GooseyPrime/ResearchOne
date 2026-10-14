@@ -124,7 +124,7 @@ FAIL if: statements are made without a source, uncertainty is papered over, the 
 - Citations support the information in all layers.
 FAIL if: all information is treated as equally certain, disagreement among researchers is not flagged, the survey collapses into a single-hypothesis report, or the report refuses to deliver the requested survey because sourcing is thin.`,
     requiredDeliverables: [
-      'Established-knowledge layer with cited evidence',
+      'Established-knowledge layer with cited sources',
       'Contested or debated questions layer',
       'Hypothesized or emerging ideas layer',
       'Open questions or knowledge gaps',
@@ -195,7 +195,7 @@ FAIL if: disagreement between sources is passed over, one side is given more wei
 - Methodology for source selection is stated.
 - Findings are synthesized across sources, not merely listed.
 - Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
-- Limitations of the evidence base are acknowledged.
+- Limitations of the sources are acknowledged.
 - Citations are present for all referenced works.
 - No unsupported inferences added beyond what the literature supports.
 FAIL if: sources are listed without synthesis, search scope is unstated, the review introduces statements not found in the surveyed literature, or the report refuses to synthesize the literature because sourcing is thin.`,
@@ -203,7 +203,7 @@ FAIL if: sources are listed without synthesis, search scope is unstated, the rev
       'Stated scope and search methodology',
       'Synthesized findings across sources',
       'Discussion of patterns and disagreements',
-      'Limitations of the evidence base',
+      'Limitations of the sources',
       'Reference list',
     ],
   },
@@ -421,7 +421,7 @@ FAIL if: the partisan stance is undisclosed, counterarguments are ignored, or ev
     requiredDeliverables: [
       'Partisan or positional disclosure',
       'Explicit thesis',
-      'Supporting arguments with evidence',
+      'Supporting arguments with sources',
       'Strongest counterarguments',
       'Rebuttals',
     ],
@@ -481,12 +481,12 @@ FAIL if: the direct answer is absent, sources are missing, the answer is padded 
     narrativeHint: 'Legacy runs without intent gate.',
     verifierRubric: `PASS criteria for a Standard Dossier (legacy):
 - Sources are cited for major statements.
-- Analysis is grounded in the evidence.
-- Conclusions are not more confident than the evidence.
-FAIL if: statements are unsupported, uncertainty is hidden, or the conclusion contradicts the evidence.`,
+- Analysis is grounded in the cited sources.
+- Conclusions are not more confident than the sources allow.
+FAIL if: statements are unsupported, uncertainty is hidden, or the conclusion contradicts the sources.`,
     requiredDeliverables: [
       'Executive summary',
-      'Evidence section',
+      'What the sources show',
       'Analysis',
       'Conclusion',
     ],

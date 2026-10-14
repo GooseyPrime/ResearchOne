@@ -46,7 +46,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
     eyebrow: 'DEEP RESEARCH PLATFORM',
     headline: 'Deep research that adapts to the question.',
     subhead:
-      'Ask for an explanation, comparison, evidence review, opportunity map, implementation plan, or fact check. ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited report with uncertainty and contradictions made visible.',
+      'Ask for an explanation, comparison, literature review, opportunity map, implementation plan, or fact check. ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited report with uncertainty and contradictions made visible.',
     ctas: [
       { label: 'Open a sample report', to: '/sample-report', variant: 'primary' },
       { label: 'See the methodology', to: '/methodology', variant: 'secondary' },
@@ -80,12 +80,12 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
     headline: 'A research engine for contested public-record questions.',
     subhead:
       'Built for complex questions where records, timelines, and source accounts do not line up cleanly. ' +
-      'ResearchOne maps the evidence, keeps source disagreements visible, and helps you review competing interpretations without flattening them.',
+      'ResearchOne maps what the sources say, keeps source disagreements visible, and helps you review competing interpretations without flattening them.',
     ctas: [
       { label: 'See an investigative report', to: '/sample-report?topic=investigative', variant: 'primary' },
       { label: 'How it works',                to: '/methodology',                  variant: 'secondary' },
     ],
-    proofLine: 'Specialist verification when needed · Source-corroboration tiers stay visible · You see the evidence trail, not just the verdict.',
+    proofLine: 'Specialist verification when needed · Source-corroboration tiers stay visible · You see every source behind a finding, not just the conclusion.',
   },
 
   // ──────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       { label: 'See a Patent Gap report',  to: '/sample-report?topic=patent-gap', variant: 'primary' },
       { label: 'See pricing',              to: '/pricing',                    variant: 'secondary' },
     ],
-    proofLine: 'Citation Integrity Checker · Lossless evidence aliases · Source-diverse, not source-voluminous.',
+    proofLine: 'Citation Integrity Checker · Lossless citation aliases · Source-diverse, not source-voluminous.',
   },
 };
 

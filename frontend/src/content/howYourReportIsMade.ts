@@ -7,7 +7,7 @@ export const HOW_YOUR_REPORT_IS_MADE_STEPS = [
   'We turn your question into a research plan and show it to you to approve before anything runs—including the report type and how the findings will be checked.',
   'We find and rank relevant sources, then read them.',
   'We draft findings with a citation for every finding.',
-  `${DOUBLE_CHECK.description} Investigations also gather the evidence on each side for comparison.`,
+  `${DOUBLE_CHECK.description} Investigations also gather what the sources on each side say, for comparison.`,
   'We keep genuine disagreements between sources visible instead of hiding them.',
   'We verify every citation before finalizing, and you can export the report.',
 ] as const;

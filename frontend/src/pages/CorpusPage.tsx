@@ -71,7 +71,7 @@ export default function CorpusPage() {
           <Database className="text-accent" size={24} />
           Corpus Intelligence
         </h1>
-        <p className="text-slate-400 text-sm mt-1">Browse evidence, findings, and contradictions in the research corpus.</p>
+        <p className="text-slate-400 text-sm mt-1">Browse sources, findings, and contradictions in the research corpus.</p>
       </div>
 
       {/* Stats cards. node-postgres returns bigint as string by default,
