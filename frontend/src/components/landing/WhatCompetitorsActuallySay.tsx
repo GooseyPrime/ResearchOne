@@ -35,7 +35,7 @@ const QUOTES: readonly QuoteCard[] = [
     attribution: 'OpenAI, Deep Research System Card (Feb 25, 2025).',
     url: 'https://openai.com/index/deep-research-system-card/',
     counterLine:
-      'ResearchOne surfaces uncertainty and contradiction as first-class outputs and raises verification depth when the request needs stronger adjudication.',
+      'ResearchOne surfaces uncertainty and contradiction as first-class outputs and raises verification depth when the request needs stronger checking.',
   },
   {
     quote: 'source bias transfer and over-association of unrelated facts.',

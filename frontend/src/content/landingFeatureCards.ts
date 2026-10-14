@@ -15,7 +15,7 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
     icon: Shield,
     headline: 'Adaptive verification, by design',
     description:
-      'Verification intensity scales with the request, evidence quality, and risk profile.',
+      'Verification intensity scales with the request, source quality, and risk profile.',
     metric: 'Intent-aware checks',
   },
   {

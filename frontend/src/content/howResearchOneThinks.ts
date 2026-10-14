@@ -14,9 +14,9 @@ import { DOUBLE_CHECK, customerOptionHelp, customerOptionsIn } from './customerO
 
 export const HOW_RESEARCHONE_THINKS_SHORT =
   'ResearchOne first works out what kind of report you asked for, then runs these steps in order: ' +
-  'planning, searching for sources, reading them, working through the evidence, Double-check, writing the report, ' +
-  `and checking the report. ${DOUBLE_CHECK.description} Where sources disagree, the report shows the disagreement ` +
-  'instead of hiding it.';
+  'planning, searching for sources, reading them, analyzing what they show, writing the report, ' +
+  `and checking its citations. When you turn on Double-check: ${DOUBLE_CHECK.description} ` +
+  'Where sources disagree, the report shows the disagreement instead of hiding it.';
 
 // ---------------------------------------------------------------------------
 // Expandable methodology sections
@@ -51,7 +51,7 @@ export const HOW_RESEARCHONE_THINKS_SECTIONS: readonly HowResearchOneThinksSecti
     heading: 'Investigations and fact-checks',
     body:
       'For an investigation, a fact-check, a story verification or a case for a position, ResearchOne gathers ' +
-      'the evidence for and the evidence against and sets them side by side. The goal is a balanced account: ' +
+      'what the sources for and against say and sets them side by side. The goal is a balanced account: ' +
       'the strongest case on each side, including less common findings and other explanations ' +
       'when they matter to your question.',
   },
@@ -72,7 +72,7 @@ export const HOW_RESEARCHONE_THINKS_SECTIONS: readonly HowResearchOneThinksSecti
 
 export const OUTLIER_BRIDGING_MARKETING =
   'In an investigation, ResearchOne includes less common findings, disputed data and other ' +
-  'explanations when they matter to the question — so you can see all of the evidence, not just ' +
+  'explanations when they matter to the question — so you can see everything the sources say, not just ' +
   'the easiest summary.';
 
 export const OUTLIER_BRIDGING_ONE_LINER =

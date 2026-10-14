@@ -38,6 +38,12 @@ const RULES: Rule[] = [
   { name: 'earlier step name', pattern: /\bchallenge pass\b/i },
   { name: 'internal role name', pattern: /\b(planner|retriever|sleuth|synthesi[sz]er|reasoner|verifier|orchestrator|epistemic)\b/i },
   { name: 'reader wording', pattern: /\bclaims?\b/i },
+  // Standard research never reads as a court case or a lab trial: the sources are
+  // "sources", not "evidence", and nothing is weighed, ruled on or falsified.
+  {
+    name: 'evidence or courtroom wording',
+    pattern: /\b(evidence\w*|weigh(s|ing|ed)?|verdicts?|adjudicat\w*|prosecut\w*|testimon\w*|cross[- ]examin\w*|witness\w*|falsif\w*|hypothes[ei]s)\b/i,
+  },
   // strongest_form_started, run_completed, discovery_round_2_complete, retriever_analysis.
   { name: 'raw step code', pattern: /\b[a-z][a-z0-9]*(_[a-z0-9]+)+\b/ },
 ];
@@ -201,7 +207,7 @@ describe('the progress-wording gate', () => {
     expect(inFile('services/reasoning/researchOrchestrator.ts')).toContain('Reasoning across sources...');
     expect(inFile('services/reasoning/researchOrchestrator.ts')).toContain('Restating each finding in its strongest form before checking it...');
     // Passed through a local helper, and written by SQL.
-    expect(inFile('services/reasoning/researchOrchestrator.ts')).toContain('Analyzing retrieved evidence...');
+    expect(inFile('services/reasoning/researchOrchestrator.ts')).toContain('Analyzing the sources that were found...');
     expect(inFile('services/reasoning/researchOrchestrator.ts')).toContain('Starting the run and preparing the research plan...');
     expect(inFile('services/reasoning/reportRevisionService.ts')).toContain('Checking the revised report');
     expect(inFile('services/reasoning/targetedRepair.ts')).toContain('Repairing report content (full pass).');
@@ -245,6 +251,29 @@ describe('the progress-wording gate', () => {
       '6 [raw step code] Red-team review (strongest_form_started)',
       "7 [role nickname] Devil's advocate round  …  of the adversarial pass",
       '8 [raw step code] Executing specialist: market_scout',
+    ]);
+  });
+
+  it('fails on the evidence and courtroom wording a standard run once showed', () => {
+    const dir = tree({
+      'services/pipeline.ts': [
+        'declare function progress(stage: string, percent: number, message: string): Promise<void>;',
+        'export async function run(): Promise<void> {',
+        "  await progress('reasoning', 50, 'Weighing the evidence...');",
+        "  await progress('reasoning', 51, 'Analyzing retrieved evidence...');",
+        "  await progress('verification', 92, 'Checking the report against the evidence...');",
+        "  await progress('challenge', 65, 'Reaching a verdict on each finding');",
+        "  await progress('reasoning', 52, 'Testing the hypothesis against the sources');",
+        "  await progress('reasoning', 53, 'Analyzing the sources that were found...');",
+        '}',
+      ].join('\n'),
+    });
+    expect(progressWordingProblems(collectProgressMessages(dir)).map((problem) => problem.replace(/^services\/pipeline\.ts:/, ''))).toEqual([
+      '3 [evidence or courtroom wording] Weighing the evidence...',
+      '4 [evidence or courtroom wording] Analyzing retrieved evidence...',
+      '5 [evidence or courtroom wording] Checking the report against the evidence...',
+      '6 [evidence or courtroom wording] Reaching a verdict on each finding',
+      '7 [evidence or courtroom wording] Testing the hypothesis against the sources',
     ]);
   });
 

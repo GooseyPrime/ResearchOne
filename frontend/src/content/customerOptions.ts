@@ -92,7 +92,7 @@ export const CUSTOMER_OPTIONS: readonly CustomerOption[] = [
     'verdict',
     'open',
     'Still an open question',
-    'There is not enough evidence either way yet, so the finding is not stated as a fact.',
+    'The sources do not settle it either way yet, so the finding is not stated as a fact.',
     "Finding: 'The new battery lasts 20 years.' Only two years of test data exist → Still an open question."
   ),
 
@@ -115,14 +115,14 @@ export const CUSTOMER_OPTIONS: readonly CustomerOption[] = [
     'report_type',
     'adjudication',
     'Fact-check',
-    'Tests one specific statement against the evidence and tells you whether it is true.',
+    'Checks one specific statement against the sources and tells you whether it is true.',
     "'Is it true that remote work lowers productivity?'"
   ),
   entry(
     'report_type',
     'investigation',
     'Investigation',
-    'Digs into a disputed topic and sets out the evidence on each side.',
+    'Digs into a disputed topic and sets out what the sources on each side say.',
     "'Why did the stadium project go 60% over budget?'"
   ),
   entry(
@@ -143,7 +143,7 @@ export const CUSTOMER_OPTIONS: readonly CustomerOption[] = [
     'report_type',
     'feasibility',
     'Feasibility check',
-    'Weighs whether a plan can work, listing what supports it and what blocks it.',
+    'Works out whether a plan can work, listing what supports it and what blocks it.',
     "'Can a 20-person company realistically get SOC 2 certified in six months?'"
   ),
   entry(
@@ -229,7 +229,7 @@ export const CUSTOMER_OPTIONS: readonly CustomerOption[] = [
     'research_objective',
     'GENERAL_EPISTEMIC_RESEARCH',
     'General Research',
-    'Balanced research for most questions: it weighs the sources against each other and reports what they support.',
+    'Balanced research for most questions: it compares the sources with each other and reports what they support.',
     "'What are the health effects of microplastics?'"
   ),
   entry(
@@ -626,7 +626,7 @@ export const CUSTOMER_OPTIONS: readonly CustomerOption[] = [
     'work_steps',
     'Who does the work',
     'The steps that will run for this report and what each one does.',
-    'Source reading, Evidence analysis, Double-check, Report writing.'
+    'Source reading, Source analysis, Report writing.'
   ),
   entry(
     'plan_field',
@@ -823,7 +823,7 @@ export const CUSTOMER_OPTIONS: readonly CustomerOption[] = [
   entry(
     'run_step',
     'reasoner',
-    'Weigh evidence',
+    'Analyze sources',
     'Works out what the passages show when read together, and where they disagree.',
     'Two studies agree on injury rates and a third counts them differently.'
   ),

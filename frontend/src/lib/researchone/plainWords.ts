@@ -19,7 +19,7 @@ const ROLE_WORDS: Record<string, string> = {
   planner: 'Research planning',
   retriever: 'Source reading',
   source_class_classifier: 'Source sorting',
-  reasoner: 'Evidence analysis',
+  reasoner: 'Source analysis',
   // One step to a customer; it has two parts, and each part can use its own model.
   strongest_form: `${CHECK} (restating findings)`,
   double_check: `${CHECK} (testing findings)`,
@@ -45,7 +45,36 @@ const ROLE_WORDS: Record<string, string> = {
 const EARLIER_MESSAGES: Array<[RegExp, string]> = [
   [/^steel-?man pass:.*$/i, 'Restating each finding in its strongest form before checking it...'],
   [/^worker picked up the run; preparing planner\.*$/i, 'Starting the run and preparing the research plan...'],
+  // Messages stored before the standard-research wording pass (14 Oct 2026).
+  [/^analyzing retrieved evidence\.*$/i, 'Analyzing the sources that were found...'],
+  [/^re-analyzing evidence after targeted re-discovery\.*$/i, 'Analyzing the sources again after a targeted new search...'],
+  [/^working through the evidence is not needed for this kind of request\.?$/i, 'Analyzing the sources is not needed for this kind of request'],
+  [/^checking the report against the evidence\.*$/i, 'Checking the report against its sources...'],
 ];
+
+/**
+ * Evidence and courtroom words in pipeline text stored before 14 Oct 2026. A
+ * research run reads sources; it does not weigh evidence. Mass noun for mass
+ * noun, so a sentence stays grammatical ("Supporting evidence was limited" →
+ * "Supporting source material was limited").
+ */
+const EARLIER_WORDING: Array<[RegExp, string]> = [
+  [/\b(?:weigh(?:ing|s|ed)?|working through) (?:the )?evidence\b/gi, 'analyzing the sources'],
+  [/\bweigh evidence\b/gi, 'analyze sources'],
+  [/\bevidence reasoner\b/gi, 'source analyst'],
+  [/\bthe evidence\b/gi, 'the sources'],
+  [/\bevidence\b/gi, 'source material'],
+];
+
+/** Text in quotation marks is someone's own words (a question, a source title) and is left as written. */
+const QUOTED = /("[^"]*"|“[^”]*”|‘[^’]*’)/;
+
+function rewordOutsideQuotes(text: string): string {
+  return text
+    .split(QUOTED)
+    .map((part, index) => (index % 2 === 1 ? part : EARLIER_WORDING.reduce((out, [earlier, words]) => out.replace(earlier, words), part)))
+    .join('');
+}
 
 /** A nickname for a role or a pass, and the plain words that take its place. */
 const NICKNAMES: Array<[RegExp, string]> = [
@@ -81,6 +110,7 @@ export function plainProgressText(text: string | null | undefined): string {
   // "(strongest_form_started)" after a message says nothing to a reader: drop it whole.
   plain = plain.replace(/\s*[([]\s*[a-z][a-z0-9]*(?:_[a-z0-9]+)+\s*[)\]]/g, '');
   for (const [nickname, words] of NICKNAMES) plain = plain.replace(nickname, words);
+  plain = rewordOutsideQuotes(plain);
   // A code inside a sentence is read as its words.
   plain = plain.replace(STEP_CODE, (code) => code.replace(/_/g, ' '));
   plain = plain.replace(/\b(double-check)(?: \1)+/gi, '$1').replace(/[ \t]{2,}/g, ' ').trim();

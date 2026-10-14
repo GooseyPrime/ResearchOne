@@ -1172,8 +1172,15 @@ describe('code, links and stale reference lists', () => {
     const section =
       'The verdict was clear [P1]. See [the ruling](https://example.org/verdict).\n\n```\nconst verdict = true;\n```\n\n    indented = verdict\n\nThis report synthesizes evidence, and `verdict` is a variable.';
     expect(removeBannedWording(section)).toBe(
-      'The finding was clear [P1]. See [the ruling](https://example.org/verdict).\n\n```\nconst verdict = true;\n```\n\n    indented = verdict\n\nThis report draws on evidence, and `verdict` is a variable.'
+      'The finding was clear [P1]. See [the ruling](https://example.org/verdict).\n\n```\nconst verdict = true;\n```\n\n    indented = verdict\n\nThis report draws on its sources, and `verdict` is a variable.'
     );
+  });
+
+  it('says the report compares sources where a draft weighed the evidence, and keeps a quotation as written', () => {
+    expect(removeBannedWording('After weighing the evidence, the city audit is more reliable [P1]. Weigh the evidence again.')).toBe(
+      'After comparing the sources, the city audit is more reliable [P1]. Compare the sources again.'
+    );
+    expect(removeBannedWording('The judge said "we must weigh the evidence" [P2].')).toBe('The judge said "we must weigh the evidence" [P2].');
   });
 
   it('takes banned wording out of a link label and keeps the destination', () => {

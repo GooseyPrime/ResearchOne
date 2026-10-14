@@ -135,7 +135,7 @@ describe('the run page uses plain headings and plain step names', () => {
     const steps = within(screen.getByTestId('run-steps')).getAllByRole('listitem');
     expect(steps.map((step) => step.textContent?.replace(/^\d+/, ''))).toEqual(RUN_STEPS.map((step) => step.name));
     steps.forEach((step, index) => expect(step).toHaveAttribute('title', customerOptionHelp(RUN_STEPS[index])));
-    expect(RUN_STEPS.map((step) => step.name)).toEqual(['Plan', 'Search sources', 'Read sources', 'Check figures', 'Weigh evidence', 'Double-check', 'Write', 'Check citations', 'Finish']);
+    expect(RUN_STEPS.map((step) => step.name)).toEqual(['Plan', 'Search sources', 'Read sources', 'Check figures', 'Analyze sources', 'Double-check', 'Write', 'Check citations', 'Finish']);
   });
 
   it('says what the step the run is on does, with an example, without hovering', async () => {

@@ -31,8 +31,10 @@ Vocabulary mapping (public copy only):
 | "evidence chain" | "citation-and-source chain" | n/a |
 | "counter-evidence" | "counter-sources" | n/a |
 | "Evidence state" (timeline) | "Corroboration state" | n/a |
-| "primary evidence" | "primary evidence" (reserved) | n/a |
+| "primary evidence" | "original records" (see the standard-research rule below) | n/a |
 | "Reasoning over evidence..." (telemetry) | "Reasoning across sources..." | n/a (UI string only) |
+| "Weigh evidence" (run step) | "Analyze sources" | `reasoner` (unchanged) |
+| "Evidence" (report tab) | "Findings" | tab key `evidence` (unchanged) |
 
 Display labels for tier identifiers:
 
@@ -43,6 +45,38 @@ Display labels for tier identifiers:
 | `testimony` | Testimony |
 | `inference` | Inference |
 | `speculation` | Speculation |
+
+## Standard research: no evidence or courtroom words (14 Oct 2026, Brandon)
+
+This section overrides discipline item 1 and the "primary evidence" row above
+on every surface a standard research run reaches: the plan screen, the run
+page and its steps, stored progress messages, the failed-run page, the report
+reader and its exports, help pages and marketing. Brandon saw "weighing the
+evidence" on a standard run twice; the direction is that ordinary research
+reads and compares **sources**. It does not weigh evidence, reach verdicts,
+adjudicate, prosecute or cross-examine.
+
+- Say **sources**, **source material**, **original records** or **findings**.
+  The reasoner step is **Analyze sources**; its role is **Source analysis**.
+- Messages already stored in older runs are reworded on display by
+  `plainProgressText` (`frontend/src/lib/researchone/plainWords.ts`); text in
+  quotation marks is someone's own words and is left as written.
+- Allowed, each named in the gate with its reason: verbatim competitor
+  quotes and the reply that papers are not evidence
+  (`WhatCompetitorsActuallySay.tsx`, `ComparePage.tsx`), and patterns that strip
+  old grade labels. Double-check's own viewpoints (for example "Defense
+  Attorney") belong to the optional, explicit Double-check and stay.
+- Internal identifiers (`strong_evidence`, the `evidence` tab key,
+  `ReaderEvidence`, stage ids) are not renamed.
+
+Gates that fail on a regression:
+
+- `frontend/src/__tests__/wording/readerWordingScan.ts` ("evidence or
+  courtroom wording"): every reader-facing string in `frontend/src`.
+- `backend/src/__tests__/progressMessageWording.test.ts` (same name): every
+  message handed to a progress emitter, socket event or stored status.
+- `frontend/src/__tests__/wording/standardResearchWording.test.ts`: the run
+  steps, stage labels, role words, and stored older messages after rewording.
 
 ## Competitor comparison content
 

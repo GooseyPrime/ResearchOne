@@ -1607,7 +1607,7 @@ async function runResearchJobInner(
       // believing it had evidence. That is fixed in `sourceSufficiencyGate`.
       // Adjudicative intents still hard-fail, further down, once rediscovery
       // is exhausted.
-      await progress('retrieval', 24, 'No citable evidence found yet; searching again.', {
+      await progress('retrieval', 24, 'No citable sources found yet; searching again.', {
         substep: 'retrieval_no_evidence',
       });
     }
@@ -1764,7 +1764,7 @@ async function runResearchJobInner(
       }
     };
 
-    await runRetrieverAnalysisStage('Analyzing retrieved evidence...');
+    await runRetrieverAnalysisStage('Analyzing the sources that were found...');
     await runSpecialistStage();
 
     // Persist scoped corpus-gate decisions collected during specialist execution
@@ -1790,7 +1790,7 @@ async function runResearchJobInner(
       await progress(
         'reasoning',
         47,
-        `Added ${scopedChunkCount} more source passage(s) to the evidence for this run.`,
+        `Added ${scopedChunkCount} more source passage(s) to this run.`,
         { substep: 'scoped_chunks_merged', chunkCount: allChunks.length }
       );
     }
@@ -1856,7 +1856,7 @@ async function runResearchJobInner(
     }
 
     if (sourceAssessment.action === 'rediscover') {
-      await progress('reasoning', 48, 'The specialist analyses found too little evidence; running a targeted new search.', {
+      await progress('reasoning', 48, 'The specialist analyses found too little in the sources; running a targeted new search.', {
         substep: 'rediscovery_started',
         detail: sourceAssessment.gaps.join(' | ').slice(0, 500),
       });
@@ -1967,7 +1967,7 @@ async function runResearchJobInner(
       // Passages a later search added go through the link check before anything reads them.
       await applyLinkCheckToRunPassages();
       sourceContext = formatSourceContext(allChunks);
-      await runRetrieverAnalysisStage('Re-analyzing evidence after targeted re-discovery...');
+      await runRetrieverAnalysisStage('Analyzing the sources again after a targeted new search...');
       await runSpecialistStage();
       sourceAssessment = assessSourceSufficiency({
         intentId: orchProfile.intent as never,
@@ -2029,7 +2029,7 @@ async function runResearchJobInner(
         });
         if (step !== 'use_gate') return step;
         logGateFallback(runId, sourceAssessment);
-        await progress('reasoning', 49, 'Material check could not be read; using the existing evidence check.', {
+        await progress('reasoning', 49, 'Material check could not be read; using the existing source check.', {
           substep: 'material_judgement_fallback',
           detail: sourceAssessment.reason,
         });
@@ -2139,7 +2139,7 @@ async function runResearchJobInner(
         requestedArtifactCount,
         gaps: sourceAssessment.gaps,
       });
-      await progress('reasoning', 49, 'Supporting evidence was limited; writing the full report with the uncertainty clearly marked.', {
+      await progress('reasoning', 49, 'Supporting sources were limited; writing the full report with the uncertainty clearly marked.', {
         substep: 'low_evidence_labeled_delivery',
       });
     } else if (sourceAssessment.action === 'insufficient_evidence_fail_closed') {
@@ -2153,7 +2153,7 @@ async function runResearchJobInner(
       // only by a counter somewhere else. It has its own name now.
       sourceFailureReason = sourceAssessment.reason;
       adjudicativeEvidenceExhausted = true;
-      await progress('reasoning', 49, 'No independent evidence was found for a finding that needs verifying; stopping rather than guessing.', {
+      await progress('reasoning', 49, 'No independent source was found for a finding that needs verifying; stopping rather than guessing.', {
         substep: 'adjudicative_evidence_exhausted',
       });
     }
@@ -2194,7 +2194,7 @@ async function runResearchJobInner(
         snapshot: { output: reasonerResult.content },
       });
     } else {
-      await progress('reasoning', 50, 'Working through the evidence is not needed for this kind of request', { substep: 'stage_skipped' });
+      await progress('reasoning', 50, 'Analyzing the sources is not needed for this kind of request', { substep: 'stage_skipped' });
       reasonerResult = orchestrationStubModelResult('reasoner', stubReasoningFromRetriever(retrieverResult.content));
     }
 
@@ -2484,7 +2484,7 @@ async function runResearchJobInner(
     let verification: VerificationResult = { passed: false, criteria: [], overall: 'UNKNOWN' };
     let verificationUnavailable = false;
     if (shouldRunPipelineStage(orchProfile, 'verification')) {
-      await progress('verification', 92, 'Checking the report against the evidence...');
+      await progress('verification', 92, 'Checking the report against its sources...');
 
       // Phase B — use per-intent verifier rubric instead of the universal prompt
       const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent, isAdjudicative);

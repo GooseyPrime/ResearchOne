@@ -242,7 +242,7 @@ describe('the customer report page', () => {
   it('a report with no challenge material has no Double-check tab', async () => {
     state.report = { ...OLD_REPORT, sections: OLD_REPORT.sections!.slice(0, 4) };
     await openReportPage();
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Report', 'Evidence', 'Sources', 'How this was researched']);
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Report', 'Findings', 'Sources', 'How this was researched']);
   });
 });
 

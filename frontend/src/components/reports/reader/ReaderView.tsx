@@ -157,7 +157,7 @@ export interface ReaderViewProps extends ReaderReportBodyProps {
 
 /**
  * The reading page (slice 5). The Report tab shows the report as a reader is
- * meant to see it and nothing else. Strength appears only on the Evidence tab,
+ * meant to see it and nothing else. Strength appears only on the Findings tab,
  * and challenge material only on the Challenge pass tab.
  */
 export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, method }: ReaderViewProps): JSX.Element {

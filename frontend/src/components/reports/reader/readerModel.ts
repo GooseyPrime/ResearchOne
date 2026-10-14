@@ -269,7 +269,7 @@ export type ReaderTab = 'report' | 'evidence' | 'sources' | 'method' | 'challeng
 
 export const TAB_LABELS: Record<ReaderTab, string> = {
   report: 'Report',
-  evidence: 'Evidence',
+  evidence: 'Findings',
   sources: 'Sources',
   method: 'How this was researched',
   challenge: CHALLENGE_PASS,
