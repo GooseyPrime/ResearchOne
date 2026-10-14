@@ -1,3 +1,4 @@
+import { MONITORING_UNAVAILABLE, MonitorProviderError, missingMonitorSettings } from '../../services/monitoring/parallelMonitorClient';
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { logger } from '../../utils/logger';
@@ -63,6 +64,13 @@ byReport.post('/', async (req, res, next) => {
       return;
     }
 
+    // A monitor that cannot be created at Parallel, or cannot report back, is
+    // not offered: no token is spent and no subscription is started for it.
+    if (missingMonitorSettings().length > 0) {
+      res.status(503).json(MONITORING_UNAVAILABLE);
+      return;
+    }
+
     if (monitorKind === 'living_report') {
       const allowed = await userCanAccessReportForMonitor(userId, reportId);
       if (!allowed) {
@@ -90,6 +98,11 @@ byReport.post('/', async (req, res, next) => {
           tokenBalance: result.tokenBalance,
         });
       } catch (err) {
+        if (err instanceof MonitorProviderError) {
+          // Raised before the token is spent: nothing was charged.
+          res.status(503).json({ ...MONITORING_UNAVAILABLE, detail: 'Parallel could not start the monitor. No token was used.' });
+          return;
+        }
         if (isInsufficientMonitorTokensError(err)) {
           res.status(402).json({
             error: 'Insufficient monitor tokens',

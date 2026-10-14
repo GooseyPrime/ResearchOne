@@ -1,3 +1,4 @@
+import { missingMonitorSettings } from '../monitoring/parallelMonitorClient';
 import type { MonitorKind } from '../monitoring/parallelMonitorService';
 import { anyLivingReportPackAvailable, getPurchaseAvailability } from './purchaseAvailability';
 
@@ -31,6 +32,9 @@ function buildCatalog(): AddonCatalogEntry[] {
   // has its Stripe price set. This was hard-coded to false, so the catalog
   // could not tell a configured deployment from an unconfigured one.
   const livingReportTokens = anyLivingReportPackAvailable(availability);
+  // A monitor needs Parallel set up on this server (key, webhook address and
+  // secret). Until it is, both monitor add-ons show as not yet available.
+  const monitoringReady = missingMonitorSettings().length === 0;
 
   return [
     {
@@ -43,7 +47,7 @@ function buildCatalog(): AddonCatalogEntry[] {
       category: 'report_monitor',
       monitorKind: 'living_report',
       managePath: '/app/billing#monitor-tokens',
-      comingSoon: false,
+      comingSoon: !monitoringReady,
       stripeConfigured: livingReportTokens,
     },
     {
@@ -56,7 +60,7 @@ function buildCatalog(): AddonCatalogEntry[] {
       category: 'report_monitor',
       monitorKind: 'reverse_citation_watch',
       managePath: '/app/monitors/reverse-citation-watch',
-      comingSoon: false,
+      comingSoon: !monitoringReady,
       stripeConfigured: rcwPrice,
     },
     // "Devil's Advocate Review" ($5.00 per run) was removed in WO-AH.

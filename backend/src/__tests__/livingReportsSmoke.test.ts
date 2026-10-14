@@ -83,14 +83,21 @@ function getHandler() {
   return layer;
 }
 
-function signedRequest(body: object): { req: Request; raw: Buffer } {
+/** A delivery signed per Standard Webhooks, as Parallel sends it. */
+function signedRequest(body: object, webhookId: string): { req: Request; raw: Buffer } {
   const raw = Buffer.from(JSON.stringify(body), 'utf8');
-  const sig = crypto.createHmac('sha256', PARALLEL_SECRET).update(raw).digest('hex');
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const key = Buffer.from(PARALLEL_SECRET.replace(/^whsec_/, ''), 'base64');
+  const sig = crypto.createHmac('sha256', key).update(`${webhookId}.${timestamp}.${raw.toString('utf8')}`).digest('base64');
   const req = {
-    headers: { 'x-parallel-signature': sig },
+    headers: { 'webhook-id': webhookId, 'webhook-timestamp': timestamp, 'webhook-signature': `v1,${sig}` },
     body: raw,
   } as unknown as Request;
   return { req, raw };
+}
+
+function detected(): object {
+  return { type: 'monitor.event.detected', timestamp: new Date().toISOString(), data: { monitor_id: 'pm_xyz_123', event: { event_group_id: 'eg_1' } } };
 }
 
 function makeRes() {
@@ -157,11 +164,7 @@ describe('Living Reports smoke S1 — subscribe → webhook → revision', () =>
   it('verified webhook event creates a revision request and enqueues a job', async () => {
     const handler = getHandler();
     const eventId = 'evt_parallel_S1_one';
-    const { req } = signedRequest({
-      id: eventId,
-      parallel_monitor_id: 'pm_xyz_123',
-      kind: 'change_detected',
-    });
+    const { req } = signedRequest(detected(), eventId);
     const res = makeRes();
 
     await handler(req, res, vi.fn() as NextFunction);
@@ -193,11 +196,7 @@ describe('Living Reports smoke S5 — webhook replay idempotency', () => {
   it('second delivery of the same event_id returns 200 and does not duplicate work', async () => {
     const handler = getHandler();
     const eventId = 'evt_parallel_S5_replay';
-    const { req: req1 } = signedRequest({
-      id: eventId,
-      parallel_monitor_id: 'pm_xyz_123',
-      kind: 'change_detected',
-    });
+    const { req: req1 } = signedRequest(detected(), eventId);
     const res1 = makeRes();
     await handler(req1, res1, vi.fn() as NextFunction);
     expect(res1.status).toHaveBeenCalledWith(200);
@@ -207,11 +206,7 @@ describe('Living Reports smoke S5 — webhook replay idempotency', () => {
     expect(mocks.queueAdd).toHaveBeenCalledTimes(1);
 
     // Replay
-    const { req: req2 } = signedRequest({
-      id: eventId,
-      parallel_monitor_id: 'pm_xyz_123',
-      kind: 'change_detected',
-    });
+    const { req: req2 } = signedRequest(detected(), eventId);
     const res2 = makeRes();
     await handler(req2, res2, vi.fn() as NextFunction);
 
@@ -227,11 +222,25 @@ describe('Living Reports smoke S5 — webhook replay idempotency', () => {
     const handler = getHandler();
     const raw = Buffer.from(JSON.stringify({ id: 'x', parallel_monitor_id: 'pm_xyz_123' }), 'utf8');
     const req = {
-      headers: { 'x-parallel-signature': 'deadbeef' },
+      headers: { 'webhook-id': 'msg_x', 'webhook-timestamp': String(Math.floor(Date.now() / 1000)), 'webhook-signature': 'v1,deadbeef' },
       body: raw,
     } as unknown as Request;
     const res = makeRes();
     await handler(req, res, vi.fn() as NextFunction);
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('a failed execution is recorded and starts no revision', async () => {
+    const handler = getHandler();
+    const { req } = signedRequest(
+      { type: 'monitor.execution.failed', timestamp: new Date().toISOString(), data: { monitor_id: 'pm_xyz_123', event: { type: 'error', error: 'x' } } },
+      'evt_failed_run'
+    );
+    const res = makeRes();
+    await handler(req, res, vi.fn() as NextFunction);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ ok: true, recorded: true });
+    expect(mocks.createRevisionRequest).not.toHaveBeenCalled();
+    expect(mocks.queueAdd).not.toHaveBeenCalled();
   });
 });

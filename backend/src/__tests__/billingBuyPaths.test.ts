@@ -79,6 +79,7 @@ import { config } from '../config';
 const priceIds = config.stripe.priceIds as Record<string, string>;
 const original = { ...priceIds };
 const originalSecretKey = config.stripe.secretKey;
+const originalMonitor = { ...config.parallelMonitor };
 
 const BOTH = { monthly: true, annual: true };
 const NEITHER = { monthly: false, annual: false };
@@ -110,6 +111,10 @@ beforeEach(() => {
   setPrices(ALL_PRICES);
   config.admin.userIds = [];
   config.stripe.secretKey = 'sk_test_x';
+  // Monitoring is set up on this deployment unless a test says otherwise.
+  config.parallelMonitor.apiKey = 'pm_test';
+  config.parallelMonitor.webhookUrl = 'https://api.example.org/api/webhooks/parallel-monitor';
+  config.parallelMonitor.webhookSecret = 'whsec_dGVzdA==';
   stripeMocks.sessionsRetrieve.mockReset();
   confirmMocks.creditMonitorTokensFromCheckoutSession.mockReset().mockResolvedValue(true);
   confirmMocks.syncStripeSubscriptionToUser.mockReset().mockResolvedValue(undefined);
@@ -123,6 +128,7 @@ beforeEach(() => {
   return () => {
     Object.assign(priceIds, original);
     config.stripe.secretKey = originalSecretKey;
+    Object.assign(config.parallelMonitor, originalMonitor);
   };
 });
 
@@ -252,6 +258,17 @@ describe('POST /api/billing/monitor-tokens/checkout — plan eligibility', () =>
       .post('/api/billing/monitor-tokens/checkout')
       .send({ packageId: 'pack_5' });
     expect(res.status).toBe(401);
+    expect(stripeMocks.sessionsCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('monitoring not set up on this deployment', () => {
+  it('does not sell monitor tokens, and creates nothing in Stripe', async () => {
+    config.parallelMonitor.webhookUrl = '';
+    const res = await request(testApp).post('/api/billing/monitor-tokens/checkout').send({ packageId: 'pack_5' });
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe('MONITORING_NOT_CONFIGURED');
+    expect(JSON.stringify(res.body)).not.toContain('PARALLEL');
     expect(stripeMocks.sessionsCreate).not.toHaveBeenCalled();
   });
 });

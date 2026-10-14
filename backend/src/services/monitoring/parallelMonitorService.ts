@@ -1,15 +1,11 @@
 /**
  * Living Reports / Parallel Monitor — Work Order T.
  *
- * Parallel webhook payload & signature: verify live docs at https://parallel.ai/docs
- * before changing verification or parsing. Current assumptions (configure via env):
- * - Delivery is JSON with stable provider event id in `id` or `event_id`.
- * - Remote monitor id is `parallel_monitor_id` or `monitor_id`.
- * - HMAC-SHA256 hex digest of the raw request body, compared via header `X-Parallel-Signature`.
+ * The remote API and the webhook signature follow Parallel's documented
+ * contract; see `parallelMonitorClient.ts`. A monitor row is active only when
+ * Parallel answered with an active monitor for it.
  */
 
-import crypto from 'crypto';
-import axios from 'axios';
 import { config } from '../../config';
 import type { PoolClient } from 'pg';
 import { query, withTransaction } from '../../db/pool';
@@ -20,6 +16,9 @@ import {
   InsufficientMonitorTokensError,
 } from '../billing/monitorTokenService';
 import type { RevisionTriggerSource } from '../reasoning/reportRevisionService';
+import { MonitorProviderError, cancelRemoteMonitor, createRemoteMonitor, isStandInMonitorId } from './parallelMonitorClient';
+
+export { MonitorProviderError, missingMonitorSettings } from './parallelMonitorClient';
 
 export { InsufficientMonitorTokensError };
 
@@ -72,34 +71,6 @@ export const MONITOR_REVISION_REQUEST = `Parallel Monitor detected a material ch
 Re-evaluate this published report under ResearchOne PolicyOne: preserve anomalies,
 apply reasoning-first discipline, and update sections where new evidence warrants revision.
 Do not bypass the double-check / internal challenger stages — same pipeline as a user-initiated revision.`;
-
-export function verifyParallelWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined, secret: string): boolean {
-  if (!signatureHeader?.trim() || !secret) return false;
-  const expectedHex = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  let sig = signatureHeader.trim().toLowerCase();
-  if (sig.startsWith('sha256=')) sig = sig.slice(7).trim();
-  try {
-    const a = Buffer.from(sig, 'utf8');
-    const b = Buffer.from(expectedHex, 'utf8');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
-
-export function parseParallelWebhookPayload(body: unknown): {
-  parallelMonitorId: string;
-  eventId: string;
-  raw: Record<string, unknown>;
-} | null {
-  if (!body || typeof body !== 'object') return null;
-  const o = body as Record<string, unknown>;
-  const parallelMonitorId = String(o.parallel_monitor_id ?? o.monitor_id ?? '').trim();
-  const eventId = String(o.id ?? o.event_id ?? '').trim();
-  if (!parallelMonitorId || !eventId) return null;
-  return { parallelMonitorId, eventId, raw: o };
-}
 
 export async function userCanAccessReportForMonitor(userId: string, reportId: string): Promise<boolean> {
   const rows = await query<{ run_id: string | null }>('SELECT run_id FROM reports WHERE id=$1', [reportId]);
@@ -269,45 +240,41 @@ export async function findMonitorByStripeSubscriptionId(subscriptionId: string):
   return rows[0] ?? null;
 }
 
+/**
+ * What a monitor watches, in words Parallel searches with. A living report
+ * watches for new publications, retractions or corrections bearing on its
+ * subject and its cited works; a reverse-citation watch, for new works citing them.
+ */
+export function monitorQueryFor(queryDef: Record<string, unknown>, reportTitle: string | null): string {
+  const title = (reportTitle ?? '').trim();
+  const dois = (Array.isArray(queryDef.dois) ? queryDef.dois : Array.isArray(queryDef.top_citation_dois) ? queryDef.top_citation_dois : [])
+    .filter((d): d is string => typeof d === 'string' && d.trim().length > 0)
+    .slice(0, 10);
+  if (queryDef.kind === 'reverse_citation_watch') {
+    return dois.length > 0 ? `New publications that cite any of these works: ${dois.join(', ')}` : `New publications citing work on: ${title}`;
+  }
+  const subject = title ? `New publications, retractions, corrections or official updates about: ${title}` : 'New publications, retractions or corrections';
+  return dois.length > 0 ? `${subject}. Including any retraction or correction of: ${dois.join(', ')}` : subject;
+}
+
+/** A new monitor at Parallel for this definition. Throws `MonitorProviderError` when it cannot be made. */
 async function createRemoteParallelMonitor(queryDef: Record<string, unknown>): Promise<string> {
-  const apiKey = config.parallelMonitor.apiKey?.trim();
-  const base = config.parallelMonitor.baseUrl;
-  if (!apiKey) {
-    logger.warn('parallel_monitor_no_api_key_using_stub_id');
-    return `stub_${crypto.randomUUID()}`;
-  }
-  /** POST path is provisional — confirm against Parallel Monitor API docs before production. */
-  const url = `${base}/monitors`;
-  const res = await axios.post<{ id?: string; monitor_id?: string }>(url, queryDef, {
-    timeout: 30_000,
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-  });
-  const id = res.data?.id ?? res.data?.monitor_id;
-  if (!id || typeof id !== 'string') {
-    throw new Error('Parallel Monitor API returned no monitor id');
-  }
-  return id;
-}
-
-async function patchRemoteParallelMonitor(parallelMonitorId: string, body: Record<string, unknown>): Promise<void> {
-  if (parallelMonitorId.startsWith('stub_')) return;
-  const apiKey = config.parallelMonitor.apiKey?.trim();
-  if (!apiKey) return;
-  const base = config.parallelMonitor.baseUrl;
-  const url = `${base}/monitors/${encodeURIComponent(parallelMonitorId)}`;
-  await axios.patch(url, body, {
-    timeout: 30_000,
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+  const reportId = typeof queryDef.report_id === 'string' ? queryDef.report_id : '';
+  const titleRows = reportId ? await query<{ title: string | null }>('SELECT title FROM reports WHERE id=$1', [reportId]) : [];
+  return createRemoteMonitor({
+    query: monitorQueryFor(queryDef, titleRows[0]?.title ?? null),
+    metadata: { report_id: reportId, kind: String(queryDef.kind ?? 'living_report') },
   });
 }
 
-async function deleteRemoteParallelMonitor(parallelMonitorId: string): Promise<void> {
-  if (parallelMonitorId.startsWith('stub_')) return;
-  const apiKey = config.parallelMonitor.apiKey?.trim();
-  if (!apiKey) return;
-  const base = config.parallelMonitor.baseUrl;
-  const url = `${base}/monitors/${encodeURIComponent(parallelMonitorId)}`;
-  await axios.delete(url, { timeout: 30_000, headers: { Authorization: `Bearer ${apiKey}` } });
+/** Cancel at Parallel, best effort, after our own record already says it is no longer in use. */
+async function cancelRemoteQuietly(remoteId: string | null | undefined, context: Record<string, unknown>): Promise<void> {
+  if (!remoteId) return;
+  try {
+    await cancelRemoteMonitor(remoteId);
+  } catch (err) {
+    logger.warn('parallel_monitor_remote_cancel_failed', { ...context, problem: err instanceof MonitorProviderError ? err.problem : 'unknown' });
+  }
 }
 
 function buildQueryDef(args: {
@@ -347,17 +314,20 @@ export async function registerMonitor(args: {
   );
   if (existing[0]) {
     const row = existing[0];
-    if (row.status === 'active') {
+    if (row.status === 'active' && !isStandInMonitorId(row.parallel_monitor_id)) {
       return { monitorId: row.id, parallelMonitorId: row.parallel_monitor_id, status: row.status };
     }
+    // A paused or cancelled monitor was cancelled at Parallel, and a stand-in id
+    // was never made there: a new remote monitor is created before the row says active.
+    const freshId = await createRemoteParallelMonitor(row.query_def);
     await query(
       `UPDATE report_monitors
-       SET status='active', cancelled_at=NULL, paused_at=NULL,
+       SET status='active', cancelled_at=NULL, paused_at=NULL, parallel_monitor_id=$4,
            stripe_subscription_id=$2, stripe_subscription_item_id=$3
        WHERE id=$1`,
-      [row.id, args.stripeSubscriptionId, args.stripeSubscriptionItemId ?? null]
+      [row.id, args.stripeSubscriptionId, args.stripeSubscriptionItemId ?? null, freshId]
     );
-    return { monitorId: row.id, parallelMonitorId: row.parallel_monitor_id, status: 'active' };
+    return { monitorId: row.id, parallelMonitorId: freshId, status: 'active' };
   }
 
   const reportRows = await query<{ falsification_criteria: string | null }>(
@@ -405,7 +375,10 @@ export async function registerMonitor(args: {
   );
 
   const monitorId = inserted[0]?.id;
-  if (!monitorId) throw new Error('Failed to insert report_monitors row');
+  if (!monitorId) {
+    await cancelRemoteQuietly(parallelMonitorId, { reportId: args.reportId });
+    throw new Error('Failed to insert report_monitors row');
+  }
 
   await query(
     `INSERT INTO report_monitor_events (monitor_id, event_kind, payload)
@@ -429,7 +402,9 @@ async function assertMonitorCaller(monitorId: string, userId: string): Promise<M
 
 export async function pauseMonitor(monitorId: string, userId: string): Promise<void> {
   const row = await assertMonitorCaller(monitorId, userId);
-  await patchRemoteParallelMonitor(row.parallel_monitor_id, { status: 'paused' });
+  // Parallel has no pause: the remote monitor is cancelled, and a new one is made on resume.
+  // A cancellation Parallel refused leaves the row as it was.
+  await cancelRemoteMonitor(row.parallel_monitor_id);
   await query(`UPDATE report_monitors SET status='paused', paused_at=NOW(), last_event_at=NOW() WHERE id=$1`, [
     monitorId,
   ]);
@@ -441,19 +416,17 @@ export async function resumeMonitor(monitorId: string, userId: string): Promise<
   if (row.monitor_kind === 'living_report' && !row.stripe_subscription_id) {
     throw new Error('Use token activation to resume this living report');
   }
-  await patchRemoteParallelMonitor(row.parallel_monitor_id, { status: 'active' });
+  const freshId = await createRemoteParallelMonitor(row.query_def);
   await query(
-    `UPDATE report_monitors SET status='active', paused_at=NULL, last_event_at=NOW() WHERE id=$1`,
-    [monitorId]
+    `UPDATE report_monitors SET status='active', paused_at=NULL, parallel_monitor_id=$2, last_event_at=NOW() WHERE id=$1`,
+    [monitorId, freshId]
   );
   await query(`INSERT INTO report_monitor_events (monitor_id, event_kind) VALUES ($1, 'monitor_resumed')`, [monitorId]);
 }
 
-export async function patchRemoteParallelMonitorForExpiry(
-  parallelMonitorId: string,
-  body: Record<string, unknown>
-): Promise<void> {
-  await patchRemoteParallelMonitor(parallelMonitorId, body);
+/** A living report whose paid time ran out stops at Parallel. Throws when Parallel did not cancel it. */
+export async function stopRemoteMonitorForExpiry(parallelMonitorId: string): Promise<void> {
+  await cancelRemoteMonitor(parallelMonitorId);
 }
 
 export async function setLivingReportAutoRenew(
@@ -502,11 +475,11 @@ async function activateLivingReportRowInTx(
 
   const updated = await client.query<{ expires_at: string }>(
     `UPDATE report_monitors
-     SET status='active', paused_at=NULL, cancelled_at=NULL, auto_renew=$2,
+     SET status='active', paused_at=NULL, cancelled_at=NULL, auto_renew=$2, parallel_monitor_id=$3,
          expires_at = ${monitorActiveExpirySql()}, last_event_at=NOW()
      WHERE id=$1
      RETURNING expires_at`,
-    [args.monitorId, args.autoRenew]
+    [args.monitorId, args.autoRenew, args.parallelMonitorId]
   );
   const expiresAt = updated.rows[0]?.expires_at;
   if (!expiresAt) throw new Error('Failed to activate monitor');
@@ -547,9 +520,13 @@ export async function activateLivingReportWithToken(args: {
   let monitorId = row?.id;
   let createdRemoteId: string | null = null;
   let insertedMonitorId: string | null = null;
+  const previousRemoteId = row?.parallel_monitor_id ?? null;
 
   try {
-    if (!row || row.status === 'cancelled' || !parallelMonitorId) {
+    // Every activation makes a new remote monitor before any token is spent: a
+    // paused or cancelled one was cancelled at Parallel, and a stand-in id was
+    // never made there. If Parallel cannot make one, no token is spent.
+    {
       const reportRows = await query<{ falsification_criteria: string | null }>(
         'SELECT falsification_criteria FROM reports WHERE id=$1',
         [args.reportId]
@@ -610,21 +587,12 @@ export async function activateLivingReportWithToken(args: {
       tokenBalance = Number(bal.rows[0]?.token_balance ?? 0);
     });
 
-    await patchRemoteParallelMonitor(remoteIdToActivate, { status: 'active' });
-
+    void remoteIdToActivate;
+    // The row now names the new remote monitor; one it named before is no longer used.
+    if (previousRemoteId && previousRemoteId !== parallelMonitorId) await cancelRemoteQuietly(previousRemoteId, { monitorId });
     return { monitorId, expiresAt, tokenBalance };
   } catch (err) {
-    if (createdRemoteId) {
-      try {
-        await deleteRemoteParallelMonitor(createdRemoteId);
-      } catch (cleanupErr) {
-        logger.warn('monitor_token_activate_remote_cleanup_failed', {
-          reportId: args.reportId,
-          parallelMonitorId: createdRemoteId,
-          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-        });
-      }
-    }
+    await cancelRemoteQuietly(createdRemoteId, { reportId: args.reportId });
     if (insertedMonitorId) {
       await query(`DELETE FROM report_monitors WHERE id=$1 AND status='paused'`, [insertedMonitorId]);
     }
@@ -664,18 +632,22 @@ export async function toggleLivingReportMonitor(
 
   const pausedKey = row.paused_at ?? row.cancelled_at ?? 'new';
   const idempotencyKey = `activate:${monitorId}:${pausedKey}`;
-  let remoteIdToActivate = row.parallel_monitor_id;
-  await withTransaction(async (client) => {
-    const result = await activateLivingReportRowInTx(client, {
-      userId,
-      monitorId,
-      parallelMonitorId: row.parallel_monitor_id,
-      autoRenew: autoRenew ?? Boolean(row.auto_renew),
-      idempotencyKey,
+  // The remote monitor is made first; no token is spent if Parallel cannot make it.
+  const freshId = await createRemoteParallelMonitor(row.query_def);
+  try {
+    await withTransaction(async (client) => {
+      await activateLivingReportRowInTx(client, {
+        userId,
+        monitorId,
+        parallelMonitorId: freshId,
+        autoRenew: autoRenew ?? Boolean(row.auto_renew),
+        idempotencyKey,
+      });
     });
-    remoteIdToActivate = result.parallelMonitorId;
-  });
-  await patchRemoteParallelMonitor(remoteIdToActivate, { status: 'active' });
+  } catch (err) {
+    await cancelRemoteQuietly(freshId, { monitorId });
+    throw err;
+  }
 
   const rows = await queryMonitorRows<MonitorRow>(
     `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE id=$1 LIMIT 1`,
@@ -686,7 +658,7 @@ export async function toggleLivingReportMonitor(
 
 export async function cancelMonitor(monitorId: string, userId: string, reason: string): Promise<void> {
   const row = await assertMonitorCaller(monitorId, userId);
-  await deleteRemoteParallelMonitor(row.parallel_monitor_id);
+  await cancelRemoteMonitor(row.parallel_monitor_id);
   await query(
     `UPDATE report_monitors SET status='cancelled', cancelled_at=NOW(), last_event_at=NOW() WHERE id=$1`,
     [monitorId]
@@ -700,7 +672,7 @@ export async function cancelMonitor(monitorId: string, userId: string, reason: s
 export async function cancelMonitorByStripeSubscription(subscriptionId: string): Promise<void> {
   const row = await findMonitorByStripeSubscriptionId(subscriptionId);
   if (!row || row.status === 'cancelled') return;
-  await deleteRemoteParallelMonitor(row.parallel_monitor_id);
+  await cancelRemoteMonitor(row.parallel_monitor_id);
   await query(
     `UPDATE report_monitors SET status='cancelled', cancelled_at=NOW(), last_event_at=NOW() WHERE id=$1`,
     [row.id]
@@ -760,7 +732,7 @@ export async function cancelUserAddonSubscriptions(userId: string): Promise<void
       });
     }
     try {
-      await deleteRemoteParallelMonitor(row.parallel_monitor_id);
+      await cancelRemoteMonitor(row.parallel_monitor_id);
     } catch (err) {
       logger.warn('cascade_addon_remote_delete_failed', {
         monitorId: row.id,

@@ -141,6 +141,8 @@ const config = {
   parallelMonitor: {
     apiKey: process.env.PARALLEL_MONITOR_API_KEY || process.env.PARALLEL_API_KEY || '',
     webhookSecret: process.env.PARALLEL_MONITOR_WEBHOOK_SECRET || '',
+    /** The public address Parallel posts monitor events to, e.g. https://<api host>/api/webhooks/parallel-monitor. A monitor is not registered without it. */
+    webhookUrl: (process.env.PARALLEL_MONITOR_WEBHOOK_URL || '').trim(),
     baseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
   },
 
