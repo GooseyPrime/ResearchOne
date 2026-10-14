@@ -46,7 +46,6 @@ import { effectiveIngestCap } from './sourceBudget';
 import { callRoleModel } from '../openrouter/openrouterService';
 import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
-import { withPreamble } from '../../constants/prompts';
 import { safeFailureRecord } from './providers/providerHttp';
 import { withPreamble, withStandardPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
