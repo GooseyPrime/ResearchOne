@@ -71,7 +71,7 @@ export default function MethodologyPage() {
                 'Tests how well each finding is supported',
                 'Identifies unsupported assertions',
                 'Flags potential confirmation bias',
-                'Surfaces contradictory evidence'].map((item, i) =>
+                'Surfaces sources that disagree'].map((item, i) =>
                 <li data-ev-id="ev_0dc4f9f082" key={i} className="flex items-start gap-2 text-sm text-r1-muted">
                     <span data-ev-id="ev_367358ce9f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-challenge" />
                     {item}

@@ -253,10 +253,12 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
   reference_lookup: P({
     intent: 'reference_lookup',
     displayName: 'Reference lookup',
+    // The section writer writes every report, the lookup included (slice 7,
+    // plain report only), so writing is not listed as skipped: the plan screen
+    // must not tell a customer their answer will not be written.
     ...skipOnly(
       'discovery',
       'reasoning',
-      'synthesis',
       'plain_language',
       'epistemic_persistence',
     ),

@@ -261,7 +261,7 @@ export default function IngestPage() {
             <div>
               <h2 className="text-lg font-semibold text-white">Administrative corpus controls</h2>
               <p className="text-slate-400 text-sm mt-1">
-                Destructive actions remove evidence from the database. Reports are kept; citations may point to removed
+                Destructive actions remove source material from the database. Reports are kept; citations may point to removed
                 chunks or sources. Requires an admin session (operator allowlist).
               </p>
             </div>

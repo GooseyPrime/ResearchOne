@@ -4,7 +4,7 @@ export const MARKETING_FAQ_ITEMS = [
   {
     question: 'How is ResearchOne different from mainstream deep research assistants?',
     answer:
-      'Mainstream assistants optimize for fast cited answers. ResearchOne builds a plan first, gathers and reads sources, then applies specialist analysis based on your requested outcome. It keeps evidence, interpretation, uncertainty, and contradictions visible in one cited report.',
+      'Mainstream assistants optimize for fast cited answers. ResearchOne builds a plan first, gathers and reads sources, then applies specialist analysis based on your requested outcome. It keeps what the sources say, interpretation, uncertainty, and contradictions visible in one cited report.',
   },
   {
     question: 'What does Double-check actually do?',

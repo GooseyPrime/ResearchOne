@@ -1,8 +1,16 @@
 import clsx from 'clsx';
 import { INTENT_DISPLAY_LABELS } from '../../lib/intents';
 
-export default function IntentBadge({ intent }: { intent: string | null | undefined }) {
-  const key = intent?.trim() || 'legacy';
+/**
+ * The report type of a dossier. A run with no saved plan has no report type.
+ * "Earlier report" is for a finished report made before report types existed;
+ * a run that stopped before its plan was saved is not one, so for it nothing
+ * is shown rather than a label that says it is old.
+ */
+export default function IntentBadge({ intent, runStatus }: { intent: string | null | undefined; runStatus?: string | null }) {
+  const named = intent?.trim();
+  if (!named && runStatus && runStatus !== 'completed') return null;
+  const key = named || 'legacy';
   const label = INTENT_DISPLAY_LABELS[key] ?? key.replace(/_/g, ' ');
   return (
     <span

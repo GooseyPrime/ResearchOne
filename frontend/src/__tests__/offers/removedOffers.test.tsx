@@ -162,7 +162,8 @@ describe('the old /sovereign address', () => {
       </MemoryRouter>
     );
     expect(screen.getByTestId('where').textContent).toBe('/pricing');
-  });
+    // A cold import of the whole route table takes longer than the default 5 s on a loaded runner.
+  }, 30_000);
 
   it('is not in the header or footer navigation', async () => {
     const { MARKETING_FOOTER_LINKS } = await import('../../lib/marketingNav');

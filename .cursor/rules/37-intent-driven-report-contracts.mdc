@@ -357,3 +357,24 @@ and the prompts appear correct, grep the orchestrator for hardcoded copy.
       prebuilt report, and does synthesis still execute (non-zero duration)?
 - [ ] Are reader-facing fallback summary/conclusion strings gated on
       `ADJUDICATIVE_SECTION_INTENTS`?
+
+## Standard research is not challenged by default (14 Oct 2026, Brandon)
+
+Double-check runs on every report (WO-AH), in two forms:
+
+- **Fact-check, investigation, story verification** (`isAdjudicative`): the
+  challenge form. `SYSTEM_PROMPTS.double_check`, `CHALLENGE_PASS_SYSTEM_PREFIX`,
+  the reasoning-first preamble on discovery planning and the strongest-form
+  pass, and the investigative citation-status doctrine in `modeOverlays.ts`.
+- **Every other report type**: the neutral form. `STANDARD_SYSTEM_PROMPTS.double_check`
+  tests findings against the sources and does not attack them; calls pass
+  `isAdjudicative` and `baselineLayer: !isAdjudicative`, so no adversarial
+  prefix is added; discovery planning uses `discoveryPreamble(layer2)`.
+
+A new call on the challenge path must take `isAdjudicative` from the confirmed
+plan, never default to the challenge form. Guard:
+`backend/src/__tests__/standardResearchNoChallengeFraming.test.ts`.
+
+Not yet wired: `requestedMethodology` (a person's explicit choice of the
+challenge method) is stored but not read by the worker. Until it is, only the
+three challenge report types get the challenge form.

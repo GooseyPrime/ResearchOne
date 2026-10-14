@@ -19,7 +19,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Profiler } from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -225,5 +225,31 @@ describe('RJ-022: the failed run opens, draws a bounded number of times, and say
     await settle();
     expect(detail.count).toBeLessThan(25);
     expect(getDossier).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a dossier whose run stopped before a plan was saved', () => {
+  function planless() {
+    const dossier = rj022Dossier();
+    return { ...dossier, plan: { ...dossier.plan, planId: null as unknown as string, intent: null as unknown as string, orchestrationProfile: null as unknown as string, planSummary: null as unknown as string, planPayload: {}, planStatus: null as unknown as string } };
+  }
+
+  it('links to the failed-run page, shows no "Earlier report" badge, and says no plan was saved', async () => {
+    admin.value = true;
+    getDossier.mockReset().mockResolvedValue(planless());
+    mount(`/app/dossiers/${RJ022_RUN_ID}`, <Route path="/app/dossiers/:id" element={<DossierDetailPage />} />);
+    await waitFor(() => expect(screen.getByTestId('dossier-failed-run-link')).toBeTruthy());
+    expect(screen.getByRole('link', { name: 'See why it stopped' }).getAttribute('href')).toBe(`/app/reports/run/${RJ022_RUN_ID}`);
+    expect(screen.queryByText('Earlier report')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Plan$/ }));
+    expect(screen.getByText('No plan was saved: the run stopped before a plan was confirmed.')).toBeTruthy();
+    expect(screen.queryByText('{}')).toBeNull();
+  });
+
+  it('keeps "Earlier report" for a finished report made before report types', async () => {
+    getDossier.mockReset().mockResolvedValue({ ...planless(), runStatus: 'completed' });
+    mount(`/app/dossiers/${RJ022_RUN_ID}`, <Route path="/app/dossiers/:id" element={<DossierDetailPage />} />);
+    await waitFor(() => expect(screen.getByText('Earlier report')).toBeTruthy());
+    expect(screen.queryByTestId('dossier-failed-run-link')).toBeNull();
   });
 });

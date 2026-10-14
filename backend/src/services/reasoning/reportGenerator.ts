@@ -956,14 +956,21 @@ export function removeBannedWording(content: string): string {
         return word[0] === word[0].toUpperCase() ? swap[0].toUpperCase() + swap.slice(1) : swap;
       })
       .replace(/\bcase (for|against)\b/gi, 'argument $1')
-      .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
+      .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on its sources')
       .replace(/\bthe evidence establishes\b/gi, (phrase) => (phrase[0] === 'T' ? 'The sources show' : 'the sources show'))
       .replace(/\btestimony[- ]tier\b/gi, 'first-hand'),
       (sentenceStart) => (sentenceStart ? 'This analysis' : 'this analysis')
     );
 
   // The report's own wording only: a direct quotation keeps the source's words.
-  const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), plainClaimWords);
+  // Standard research compares sources; it does not weigh evidence (14 Oct 2026).
+  const compareNotWeigh = (text: string): string =>
+    text.replace(/\b(weigh(?:s|ed|ing)?) (?:the |all the |this )?evidence\b/gi, (_phrase, verb: string) => {
+      const lower = verb.toLowerCase();
+      const swap = lower === 'weighs' ? 'compares' : lower === 'weighed' ? 'compared' : lower === 'weighing' ? 'comparing' : 'compare';
+      return `${verb[0] === verb[0].toUpperCase() ? swap[0].toUpperCase() + swap.slice(1) : swap} the sources`;
+    });
+  const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), (own) => plainClaimWords(compareNotWeigh(own)));
   // A tier rating of a source is taken out first, over the whole text, so a
   // quotation that runs across a link or code keeps its words. The rating forms
   // need spaces between words, so a link destination never matches.

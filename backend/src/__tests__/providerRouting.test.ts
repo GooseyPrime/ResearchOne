@@ -9,7 +9,7 @@ import { PROVIDER_KEYS, PROVIDER_REGISTRY } from '../services/discovery/provider
 import { config } from '../config';
 import { providerErrorRecord, withExtraQueries } from '../services/discovery/discoveryOrchestrator';
 import { anomalyQueryFor, searchSeedFor } from '../services/discovery/deterministicDiscoveryQueries';
-import { getOrchestrationProfileForIntent } from '../services/planning/orchestrationProfiles';
+import { ORCHESTRATION_PROFILES, getOrchestrationProfileForIntent } from '../services/planning/orchestrationProfiles';
 
 const unkeyed = new Set(['brave']);
 const WEB = { webProviders: ['tavily'] as const, isConfigured: (key: string) => !unkeyed.has(key) };
@@ -145,8 +145,11 @@ describe('reference lookups and the report writer', () => {
     expect(source).toContain('JSON.stringify({ citationLock: true, ...(doiCheckRecord ? { doiChecks: doiCheckRecord } : {}) })');
     expect(source).not.toContain("- 'citationLock'");
     expect(source).not.toMatch(/citationLock:\s*false/);
-    // The recorded synthesis time is kept for every run.
-    expect(source).toContain("(s === 'synthesis' || shouldRunPipelineStage(orchProfile, s))");
+    // The recorded synthesis time is kept for every run: no profile lists writing as skipped,
+    // so the plan screen never says a lookup's answer will not be written.
+    for (const profile of Object.values(ORCHESTRATION_PROFILES)) {
+      expect(profile.agentsToSkip, profile.intent ?? 'legacy').not.toContain('synthesis');
+    }
     // Every discovery pass is told what the request is about.
     expect(source.match(/routingBrief: \{ intent: orchProfile\.intent, layer2: isAdjudicative \}/g)).toHaveLength(3);
     expect(source).not.toContain('configuredCap: config.discovery.maxIngestPerRun');

@@ -30,7 +30,7 @@ export function CapabilityShowcase() {
             Research infrastructure, <span data-ev-id="ev_7ffe75d83c" className="text-r1-cyan">not a chatbot</span>
           </h2>
           <p data-ev-id="ev_fe49bc6f77" style={{ display: 'block', width: '100%' }} className="mt-4 text-xl text-r1-muted leading-relaxed">
-            Every component engineered for evidence quality, not speed of response.
+            Every component engineered for source quality, not speed of response.
           </p>
         </div>
 

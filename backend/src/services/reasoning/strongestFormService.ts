@@ -1,7 +1,7 @@
 /**
  * the source-class pass — Strongest-form pass between reasoner output and the double-check.
  */
-import { callRoleModel, SYSTEM_PROMPTS, type ModelCallResult } from '../openrouter/openrouterService';
+import { callRoleModel, STANDARD_SYSTEM_PROMPTS, SYSTEM_PROMPTS, type ModelCallResult } from '../openrouter/openrouterService';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import type { RetrievedChunk } from '../retrieval/retrievalService';
 import type { StrongestFormMode } from '../planning/orchestrationProfiles';
@@ -81,6 +81,8 @@ export async function runStrongestFormPass(args: {
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   byokApiKeyOverride?: string;
+  /** Fact-checks, investigations and story verification use the challenge prompt; every other run the standard one. */
+  isAdjudicative?: boolean;
 }): Promise<StrongestFormPassResult> {
   void args.sourceClassMap;
   if (args.strongestFormMode === 'off') {
@@ -120,11 +122,13 @@ export async function runStrongestFormPass(args: {
   try {
     const modelResult = await callRoleModel({
       role: 'strongest_form',
+      isAdjudicative: args.isAdjudicative === true,
+      baselineLayer: args.isAdjudicative !== true,
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
       byokApiKeyOverride: args.byokApiKeyOverride,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.strongest_form },
+        { role: 'system', content: args.isAdjudicative ? SYSTEM_PROMPTS.strongest_form : STANDARD_SYSTEM_PROMPTS.strongest_form },
         { role: 'user', content: userBody },
       ],
       maxTokens: 8192,

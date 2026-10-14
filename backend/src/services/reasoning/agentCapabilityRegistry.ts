@@ -53,8 +53,8 @@ const CORE_AGENT_CAPABILITIES = [
   },
   {
     id: CORE_AGENT_IDS[2],
-    displayName: 'Evidence Reasoner',
-    description: 'Builds analytical chains from the retrieved evidence.',
+    displayName: 'Source Analyst',
+    description: 'Works out what the retrieved sources show together and where they disagree.',
     supportedIntents: [] as const,
     costClass: 'high' as const,
     canRunInParallel: false,
@@ -120,7 +120,7 @@ const SPECIALIST_AGENT_CAPABILITIES = [
   {
     id: SPECIALIST_AGENT_ID_LIST[4],
     displayName: 'Story Verifier',
-    description: 'Cross-checks reported accounts against corroborating evidence.',
+    description: 'Cross-checks reported accounts against other records.',
     supportedIntents: ['story_verification', 'investigation'] as const,
     costClass: 'medium' as const,
     canRunInParallel: false,

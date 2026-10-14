@@ -35,7 +35,7 @@ export function RuntimeTopology() {
             <p data-ev-id="ev_08370bd90c" className="mt-4 text-lg text-r1-muted leading-relaxed">
               Frontend served from the edge. Backend orchestrates multi-agent pipelines. 
               Vector search powers semantic retrieval. Every component built for research-grade 
-              evidence handling.
+              source handling.
             </p>
             
             {/* Status badges */}

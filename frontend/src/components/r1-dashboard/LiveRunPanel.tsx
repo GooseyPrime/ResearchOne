@@ -76,7 +76,7 @@ const GATE_FAILURE_COPY: Record<string, string> = {
   contract_failed:
     'The report was produced but did not deliver what the request asked for.',
   verification_failed:
-    'The report was produced but did not pass verification against its evidence.',
+    'The report was produced but its citations did not pass the check against their sources.',
   no_evidence:
     'No usable sources were retrieved, so there was nothing to build a report from.',
   completed_degraded:

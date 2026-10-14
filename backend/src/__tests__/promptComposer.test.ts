@@ -21,7 +21,7 @@ describe('promptComposer', () => {
     });
 
     it('includes mode overlay when defined', () => {
-      const prompt = composePrompt('double_check', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+      const prompt = composePrompt('double_check', 'INVESTIGATIVE_SYNTHESIS', 'v2_deep');
       expect(prompt).toContain('MODE-SPECIFIC DIRECTIVES');
       expect(prompt).toContain('structured comparison');
     });
@@ -83,23 +83,37 @@ describe('promptComposer', () => {
     });
   });
 
+  // The citation-status doctrine is for the investigative objectives. General
+  // research, the standard objective, handles a retracted source neutrally (14 Oct 2026).
   describe('doctrine additions', () => {
     it('retriever overlay includes scite institutional-status guidance', () => {
-      const prompt = composePrompt('retriever', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+      const prompt = composePrompt('retriever', 'INVESTIGATIVE_SYNTHESIS', 'v2_deep');
       expect(prompt).toContain('institutional-status metadata');
       expect(prompt).toContain('Never silently demote');
     });
 
     it('double-check overlay includes structured comparison directive', () => {
-      const prompt = composePrompt('double_check', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+      const prompt = composePrompt('double_check', 'INVESTIGATIVE_SYNTHESIS', 'v2_deep');
       expect(prompt).toContain('retracted or contrasted source is a puzzle');
       expect(prompt).toContain('Premature collapse to consensus is failure');
     });
 
     it('verifier overlay includes retracted-source rule', () => {
-      const prompt = composePrompt('verifier', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+      const prompt = composePrompt('verifier', 'INVESTIGATIVE_SYNTHESIS', 'v2_deep');
       expect(prompt).toContain('structural-mechanism comparison section');
       expect(prompt).toContain('pass verification regardless of the contested status');
     });
+
+    it('general research handles a retracted source neutrally and asks for no comparison section', () => {
+      const retriever = composePrompt('retriever', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+      const check = composePrompt('double_check', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+      const verifier = composePrompt('verifier', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+      expect(retriever).toContain('Do not silently drop such a chunk');
+      expect(retriever).not.toMatch(/paradigm-defense|political pressure/);
+      expect(check).not.toMatch(/Premature collapse to consensus|premise attacks/);
+      expect(verifier).toContain('it must say so where it cites that source');
+      expect(verifier).not.toContain('structural-mechanism comparison section');
+    });
   });
+;
 });

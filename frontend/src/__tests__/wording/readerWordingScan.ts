@@ -33,6 +33,8 @@ export const BANNED: Array<{ name: string; pattern: RegExp }> = [
   // RJ-013: an internal step code ("strongest_form_started", "stage_skipped", "query_done") is never text.
   // The codes end in what the step did; a column name or a class name ("discovered_by_run_id") is not one.
   { name: 'raw step code', pattern: /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*_(started|completed|complete|done|running|skipped|ready|waiting|fallback|generated|parsed|merged|adjusted|exhausted|annotate)\b/g },
+  // 14 Oct 2026: research reads and compares sources. It does not weigh evidence or rule on a case.
+  { name: 'evidence or courtroom wording', pattern: /\b(evidence|weigh(?:s|ing|ed)?|verdicts?|adjudicat\w*|prosecut\w*|cross[- ]examin\w*|courtroom)\b/gi },
   { name: 'raw status', pattern: /\b(under_review|plan_pending_confirmation|contract_failed|verification_failed|completed_degraded)\b/g },
 ];
 
