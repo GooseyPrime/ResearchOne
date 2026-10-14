@@ -32,14 +32,21 @@ const DOUBLE_CHECK_V2_SCITE_ADDITION = `A retracted or contrasted source is a pu
 
 const VERIFIER_RETRACTED_RULE = `If the report cites any source with institutional_status: retracted or high contrasting_count, the report MUST contain a structural-mechanism comparison section that names the retraction/contrast and reasons through it. Reports that cite contested sources without doing this analysis fail verification. Reports that cite contested sources AND reason through them pass verification regardless of the contested status.`;
 
+const GENERAL_RETRIEVER_STATUS_NOTE = `Some chunks carry citation-status metadata from external citation indices (for example, retracted, or contradicted by later work). Treat it as one signal among many. Do not silently drop such a chunk; note its status so the report can say so where it relies on it.`;
+
+const GENERAL_VERIFIER_STATUS_RULE = `If the report relies on a source marked retracted or widely contradicted, it must say so where it cites that source.`;
+
 export const MODE_OVERLAYS: Record<ResearchMode, Partial<Record<AgentRole, string>>> = {
+  // General research is the standard objective: neutral source handling. The
+  // retraction-as-puzzle and structural-comparison rules above belong to the
+  // investigative objectives, not to every ordinary question (14 Oct 2026).
   GENERAL_EPISTEMIC_RESEARCH: {
     planner: 'Prioritize intent fidelity and deliverable completeness. Do not reclassify the user request after plan confirmation.',
-    retriever: `${RETRIEVER_ANALYSIS_SCITE_ADDITION}\n\nRetrieve diverse, high-quality sources while matching source classes to the confirmed intent and required artifact fields.`,
+    retriever: `${GENERAL_RETRIEVER_STATUS_NOTE}\n\nRetrieve diverse, high-quality sources while matching source classes to the confirmed intent and required artifact fields.`,
     reasoner: 'Use neutral synthesis by default: answer the confirmed request directly, calibrate uncertainty, and avoid manufacturing adversarial framing.',
-    double_check: `${DOUBLE_CHECK_V2_SCITE_ADDITION}\n\nApply critique proportionally to evidence quality and gaps; do not dominate non-adjudicative reports with premise attacks.`,
+    double_check: 'Check each main finding against the sources in proportion to what is at stake; do not turn an ordinary report into an argument about its premises.',
     synthesizer: 'Preserve contract-required structure (tables, ranked lists, procedures) and produce complete artifacts before extra narrative expansion.',
-    verifier: `${VERIFIER_RETRACTED_RULE}\n\nVerify contract completeness, citation traceability, and uncertainty calibration before allowing finalization.`,
+    verifier: `${GENERAL_VERIFIER_STATUS_RULE}\n\nVerify contract completeness, citation traceability, and uncertainty calibration before allowing finalization.`,
     plain_language_synthesizer: 'Write for an intelligent non-specialist. Preserve the nuance and uncertainty of the full report. Do not oversimplify contested points.',
     outline_architect: 'Structure each section around a specific deliverable, research question thread, or evidence theme consistent with the confirmed intent. Do not presume hypotheses exist unless the intent is investigative or adjudicative.',
   },

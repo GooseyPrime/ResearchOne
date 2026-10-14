@@ -2,7 +2,7 @@
  * the source-class pass — epistemic policy helpers (orthogonal to Rule 20 preamble; reasoner/double-check
  * operational constraints live alongside openrouter SYSTEM_PROMPTS).
  */
-import { getSystemPrompt, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import { getSystemPrompt, STANDARD_SYSTEM_PROMPTS, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import {
   appendReasonerPolicyConstraint,
   REASONER_CONSENSUS_CONSTRAINT,
@@ -34,8 +34,14 @@ SOURCE-CLASS CONDITIONAL BEHAVIOR (Wave 5.3):
 The orchestrator may append per-class overlays below. When multiple classes appear in the corpus, apply each relevant overlay — prioritizing contested/suppressed/collapsed classes over pure consensus-held material when they conflict.
 `.trim();
 
-export function buildDoubleCheckSystemPrompt(dominantSourceClasses: readonly SourceClassId[]): string {
-  const base = SYSTEM_PROMPTS.double_check.trim();
+/**
+ * The Double-check system prompt. The challenge version is for fact-checks,
+ * investigations and story verification (`isAdjudicative`); every other run
+ * gets the standard version, which tests findings against sources and does not
+ * attack them (14 Oct 2026). The default is the standard version.
+ */
+export function buildDoubleCheckSystemPrompt(dominantSourceClasses: readonly SourceClassId[], isAdjudicative = false): string {
+  const base = (isAdjudicative ? SYSTEM_PROMPTS.double_check : STANDARD_SYSTEM_PROMPTS.double_check).trim();
   const section = DOUBLE_CHECK_SOURCE_CLASS_CONDITIONAL_SECTION;
   if (dominantSourceClasses.length === 0) {
     return `${base}\n\n${section}\n(No dominant source-class overlays — treat corpus as unclassified for this dimension.)`;

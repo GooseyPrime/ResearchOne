@@ -2210,6 +2210,7 @@ async function runResearchJobInner(
         chunks: allChunks,
         strongestFormMode: orchProfile.strongestFormMode,
         sourceClassMap: wave53SourceClassMap,
+        isAdjudicative,
         ...v2,
       });
       wave53StrongestFormByClaimKey = strongest.strongestFormByClaimKey;
@@ -2218,7 +2219,7 @@ async function runResearchJobInner(
     }
 
     const wave53DominantSourceClasses = dominantSourceClassesFromBreakdown(wave53SourceClassBreakdown);
-    const doubleCheckSystemPrompt = buildDoubleCheckSystemPrompt(wave53DominantSourceClasses);
+    const doubleCheckSystemPrompt = buildDoubleCheckSystemPrompt(wave53DominantSourceClasses, isAdjudicative);
     const wave53StrongestFormUserBlock = formatStrongestFormBlockForDoubleCheck(wave53StrongestFormByClaimKey);
 
     // ────────────────────────────────────────────────────────────────
@@ -2249,6 +2250,10 @@ async function runResearchJobInner(
       doubleCheckResult = await callRoleModel({
         role: 'double_check',
         ...v2,
+        // The challenge framing is for fact-checks, investigations and story
+        // verification only; a standard run's check tests, it does not attack.
+        isAdjudicative,
+        baselineLayer: !isAdjudicative,
         callPurpose: 'pipeline_double_check',
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'double_check'),
         messages: [
@@ -2278,6 +2283,10 @@ async function runResearchJobInner(
       doubleCheckResult = await callRoleModel({
         role: 'double_check',
         ...v2,
+        // The challenge framing is for fact-checks, investigations and story
+        // verification only; a standard run's check tests, it does not attack.
+        isAdjudicative,
+        baselineLayer: !isAdjudicative,
         callPurpose: 'pipeline_double_check',
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'double_check'),
         messages: [
@@ -2286,7 +2295,10 @@ async function runResearchJobInner(
             role: 'user',
             content:
               `Research Query: ${researchQuery}\n\nReasoning Produced:\n${reasonerResult.content}` +
-              `${wave53StrongestFormUserBlock}\n\nChallenge these conclusions (attack the strongest form where provided; do not argue against a weaker version). Find weaknesses, alternatives, and counterevidence.`,
+              `${wave53StrongestFormUserBlock}\n\n` +
+              (isAdjudicative
+                ? 'Challenge these conclusions (attack the strongest form where provided; do not argue against a weaker version). Find weaknesses, alternatives, and counterevidence.'
+                : 'Test these conclusions against the sources (use the strongest form where provided). Say which hold up, where reliable sources disagree, and where an original record could not be found.'),
           },
         ],
       });
@@ -2299,6 +2311,9 @@ async function runResearchJobInner(
       });
     }
 
+    // In gate mode the writer reads the check. On a standard run that check
+    // used the standard prompt above, so it reports what the sources show;
+    // only a fact-check, investigation or story verification is challenged.
     const challengesForSynthesis =
       orchProfile.doubleCheckMode === 'annotate'
         ? 'Challenge notes were captured as structured sidebar annotations and are not inlined in this narrative.'
@@ -3171,7 +3186,7 @@ ${reportForGates(generatedReport.markdown)}`,
       _intentId: orchProfile.intent,
     };
     for (const s of PIPELINE_STAGES) {
-      stageDurationPayload[s] = (s === 'synthesis' || shouldRunPipelineStage(orchProfile, s))
+      stageDurationPayload[s] = shouldRunPipelineStage(orchProfile, s)
         ? Math.round(phaseDurations[s] ?? 0)
         : null;
     }

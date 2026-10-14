@@ -26,7 +26,7 @@ import DossierStatisticsSection from '../components/dossiers/DossierStatisticsSe
 import DossierSourcesPanel from '../components/dossiers/DossierSourcesPanel';
 import ReportForkActions from '../components/reports/ReportForkActions';
 import { extractApiError } from '../utils/api';
-import { plainReportStatus, plainRunStatus } from '../utils/runStatusDisplay';
+import { plainReportStatus, plainRunStatus, resolveRunDisplayState } from '../utils/runStatusDisplay';
 import { useIsAdmin } from '../hooks/useIsAdmin';
 
 /** New research started from an earlier report, as every screen names it (RJ-018). */
@@ -43,6 +43,11 @@ const TABS: { id: TabId; label: string; icon: typeof FileText }[] = [
   { id: 'sources', label: 'Sources', icon: Database },
   { id: 'stats', label: 'Statistics', icon: Sigma },
 ];
+
+/** A plan payload with nothing in it: the run stopped before a plan was saved. */
+function isEmptyPlan(payload: unknown): boolean {
+  return payload == null || (typeof payload === 'object' && Object.keys(payload as object).length === 0);
+}
 
 function tabFromHash(): TabId {
   const h = (typeof window !== 'undefined' ? window.location.hash : '').replace(/^#/, '');
@@ -127,7 +132,7 @@ export default function DossierDetailPage() {
       <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <DossierStatusBadge status={data.runStatus} gateStatus={data.gateStatus} />
-          <IntentBadge intent={data.plan.intent} />
+          <IntentBadge intent={data.plan.intent} runStatus={data.runStatus} />
           {isAdmin && data.plan.orchestrationProfile ? (
             <span className="text-xs rounded-md border border-slate-700 px-2 py-0.5 text-slate-400">
               Profile: {data.plan.orchestrationProfile}
@@ -164,6 +169,15 @@ export default function DossierDetailPage() {
         </Link>
       </nav>
 
+      {resolveRunDisplayState({ status: data.runStatus, gateStatus: data.gateStatus }).tone === 'failure' && (
+        <p className="card p-4 text-sm text-slate-300" data-testid="dossier-failed-run-link">
+          This research did not finish.{' '}
+          <Link to={`/app/reports/run/${data.runId}`} className="text-accent hover:underline">
+            See why it stopped
+          </Link>
+        </p>
+      )}
+
       <section className="card p-5 space-y-4 text-sm text-slate-200">
         {tab === 'request' && (
           <div className="space-y-2">
@@ -194,7 +208,9 @@ export default function DossierDetailPage() {
             {data.plan.planSummary && <p className="text-slate-300">{data.plan.planSummary}</p>}
             {/* The stored plan is the technical record: field names, search strings and
                 settings. It is shown to administrators only. */}
-            {isAdmin ? (
+            {isAdmin && isEmptyPlan(data.plan.planPayload) ? (
+              <p className="text-slate-500">No plan was saved: the run stopped before a plan was confirmed.</p>
+            ) : isAdmin ? (
               <pre className="text-xs bg-slate-950/50 p-3 rounded-md overflow-x-auto text-slate-400">
                 {JSON.stringify(data.plan.planPayload, null, 2)}
               </pre>

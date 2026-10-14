@@ -41,6 +41,15 @@ interface RuntimeAvailability {
   unavailableSpecialists?: Partial<Record<SpecialistAgentId, string>>;
 }
 
+/** The pipeline stage each core role works in. */
+const CORE_AGENT_STAGE: Record<(typeof CORE_AGENT_IDS)[number], PipelineStage> = {
+  planner: 'planning',
+  retriever: 'retrieval',
+  reasoner: 'reasoning',
+  synthesizer: 'synthesis',
+  verifier: 'verification',
+};
+
 export function buildCanonicalExecutionPlan(input: {
   profile: OrchestrationProfileDefinition;
   researchBrief?: ResearchBrief;
@@ -99,7 +108,9 @@ export function buildCanonicalExecutionPlan(input: {
     intent: profile.intent,
     secondaryIntent: researchBrief?.secondaryIntent,
     corePipelineStages: [...profile.agentsToRun],
-    coreAgentRoles: [...CORE_AGENT_IDS],
+    // Only the roles whose stage this report type runs: the plan screen lists
+    // these under "Who does the work", so a lookup does not list the source analyst.
+    coreAgentRoles: CORE_AGENT_IDS.filter((id) => profile.agentsToRun.includes(CORE_AGENT_STAGE[id])),
     specialistAgents: specialists,
     sourceClasses: input.sourceClasses ?? [],
     executionGroups,

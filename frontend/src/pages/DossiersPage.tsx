@@ -297,7 +297,7 @@ export function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: 
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <DossierStatusBadge status={row.runStatus} gateStatus={row.gateStatus} />
-          <IntentBadge intent={row.planIntent} />
+          <IntentBadge intent={row.planIntent} runStatus={row.runStatus} />
         </div>
       </div>
     </button>
