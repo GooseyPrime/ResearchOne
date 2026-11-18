@@ -24,7 +24,7 @@ export default function TermsPage() {
 
         <p className="mt-6 text-r1-text-muted">
           These Terms of Service ("<strong className="text-r1-text">Terms</strong>") govern your access to and use of
-          ResearchOne (the "<strong className="text-r1-text">Service</strong>"), operated by GooseyPrime, Inc.
+          ResearchOne (the "<strong className="text-r1-text">Service</strong>"), operated by InTellMe
           ("<strong className="text-r1-text">Company</strong>", "<strong className="text-r1-text">we</strong>",
           "<strong className="text-r1-text">us</strong>", or "<strong className="text-r1-text">our</strong>"). By
           creating an account or using the Service you agree to be bound by these Terms. If you do not agree, do not
