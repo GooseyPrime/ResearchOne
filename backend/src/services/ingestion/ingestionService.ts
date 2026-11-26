@@ -12,6 +12,7 @@ import { normalizeMarkdown } from './markdownNormalizer';
 import { readStagedFile, cleanupStagedFile } from './uploadStaging';
 import { discoverSiteCrawlUrls } from './siteCrawl';
 import { assertPublicHttpUrl } from './urlFetchPolicy';
+import { UnrecoverableError } from 'bullmq';
 
 export interface IngestionJobData {
   ingestionJobId: string;
@@ -145,14 +146,17 @@ export async function runIngestionJob(
       rawContent = data.text;
       title = data.fileName ?? 'Imported Text';
     } else {
-      throw new Error(`Unsupported source type or missing content: ${sourceType}`);
+      throw new UnrecoverableError(`Unsupported source type or missing content: ${sourceType}`);
     }
 
     rawContent = stripNul(rawContent);
     title = stripNul(title);
 
     if (!rawContent || rawContent.trim().length === 0) {
-      throw new Error('Content is empty after extraction');
+      // The same source gives the same empty text on every attempt, so the
+      // queue must not fetch it again: retrying only repeated the fetch and
+      // the failure (three times per source in the logs).
+      throw new UnrecoverableError('Content is empty after extraction');
     }
 
     const { sourceId, chunkCount } = await ingestFetchedWebPage({

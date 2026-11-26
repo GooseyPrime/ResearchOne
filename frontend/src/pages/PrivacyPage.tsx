@@ -22,7 +22,7 @@ export default function PrivacyPage() {
         <p className="mt-3 text-sm text-r1-text-muted">Effective date: {EFFECTIVE_DATE}</p>
 
         <p className="mt-6 text-r1-text-muted">
-          GooseyPrime, Inc. ("<strong className="text-r1-text">Company</strong>",{' '}
+          InTellMe ("<strong className="text-r1-text">Company</strong>",{' '}
           "<strong className="text-r1-text">we</strong>", "<strong className="text-r1-text">us</strong>", or{' '}
           "<strong className="text-r1-text">our</strong>") operates the ResearchOne service (the{' '}
           "<strong className="text-r1-text">Service</strong>"). This Privacy Policy explains what personal
@@ -310,7 +310,7 @@ export default function PrivacyPage() {
             Questions, concerns, or requests regarding this Privacy Policy should be directed to:
           </p>
           <address className="not-italic">
-            <p>GooseyPrime, Inc.</p>
+            <p>InTellMe</p>
             <p>
               Email:{' '}
               <a href="mailto:privacy@researchone.io" className="text-r1-accent hover:underline">

@@ -151,6 +151,43 @@ const LATER_CALL_NOTE = 'These are further chunks the same report cites. Extract
 const CITED_PASSAGES_NOTE =
   'The report cites the chunks marked "Cited in the report". Extract what the report states with those citations first, and for each claim list in supporting_chunk_ids the id of every chunk that supports it, copied exactly from the chunk header.\n\n';
 
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The chunk and source ids named by these findings that exist in the database, as `idKey` values. */
+async function existingChunkAndSourceIds(
+  claims: ReadonlyArray<{ supporting_chunk_ids?: unknown; source_ids?: unknown }>,
+  knownChunk: (id: unknown) => string | null
+): Promise<{ chunks: Set<string>; sources: Set<string> }> {
+  const chunkIds = new Set<string>();
+  const sourceIds = new Set<string>();
+  for (const claim of claims) {
+    for (const raw of Array.isArray(claim.supporting_chunk_ids) ? claim.supporting_chunk_ids : []) {
+      const id = knownChunk(raw) ?? (typeof raw === 'string' ? raw.trim() : '');
+      if (UUID_TEXT.test(id)) chunkIds.add(id);
+    }
+    for (const raw of Array.isArray(claim.source_ids) ? claim.source_ids : []) {
+      const id = typeof raw === 'string' ? raw.trim() : '';
+      if (UUID_TEXT.test(id)) sourceIds.add(id);
+    }
+  }
+  const lookup = async (table: 'chunks' | 'sources', ids: Set<string>): Promise<Set<string>> => {
+    if (ids.size === 0) return new Set();
+    const rows = await query<{ id: string }>(`SELECT id::text AS id FROM ${table} WHERE id = ANY($1::uuid[])`, [
+      Array.from(ids),
+    ]);
+    return new Set(rows.map((row) => idKey(row.id)));
+  };
+  try {
+    const [chunks, sources] = await Promise.all([lookup('chunks', chunkIds), lookup('sources', sourceIds)]);
+    return { chunks, sources };
+  } catch (err) {
+    // Unable to check: file the findings with no link rather than risk an id
+    // that breaks the foreign key and loses all of them.
+    logger.warn('claim_id_existence_check_failed', { err: err instanceof Error ? err.message : String(err) });
+    return { chunks: new Set(), sources: new Set() };
+  }
+}
+
 export async function extractAndPersistClaims(args: {
   runId: string;
   reportId: string;
@@ -242,13 +279,34 @@ export async function extractAndPersistClaims(args: {
   const chunkById = new Map(chunks.map((c) => [c.id, c]));
   const knownIds = new Map(chunks.map((c) => [idKey(c.id), c.id]));
 
+  // The model writes the chunk and source ids it cites. One id it made up or
+  // miscopied used to break a foreign key and roll back every finding of the
+  // run (23503 on claims_source_id_fkey). Keep only ids that exist; a finding
+  // whose id does not exist is kept with no link instead of being lost.
+  const existing =
+    cited.size > 0
+      ? { chunks: new Set<string>(), sources: new Set<string>() }
+      : await existingChunkAndSourceIds(claims, (id) => knownIds.get(idKey(id)) ?? null);
+
   // Persist claims
   await withTransaction(async (client) => {
     for (const claim of claims) {
       // With saved citations the finding is tied to them; without, it is filed as it always was.
       const tied = cited.size > 0 ? resolveFindingPassages(claim.supporting_chunk_ids, knownIds, cited) : null;
-      const chunkId = tied ? tied.chunkId : claim.supporting_chunk_ids?.[0] ?? null;
-      const sourceId = tied ? tied.sourceId : claim.source_ids?.[0] ?? null;
+      // Ids tied to saved citations come from the database and are kept as
+      // they are; ids the model wrote itself are kept only when they exist.
+      const modelChunkId = claim.supporting_chunk_ids?.[0] ?? null;
+      const modelSourceId = claim.source_ids?.[0] ?? null;
+      const chunkId = tied
+        ? tied.chunkId
+        : modelChunkId && (knownIds.has(idKey(modelChunkId)) || existing.chunks.has(idKey(modelChunkId)))
+          ? modelChunkId
+          : null;
+      const sourceId = tied
+        ? tied.sourceId
+        : modelSourceId && existing.sources.has(idKey(modelSourceId))
+          ? modelSourceId
+          : null;
       const supportingChunkIds = tied ? tied.supporting : claim.supporting_chunk_ids ?? [];
       const sourceUrl = chunkId ? chunkById.get(chunkId)?.source_url : undefined;
       const sourceClass =

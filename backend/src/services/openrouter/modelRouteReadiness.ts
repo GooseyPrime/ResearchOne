@@ -181,6 +181,11 @@ export async function checkRunModelReadiness(args: RunReadinessArgs): Promise<Ru
     })),
   }));
 
+  // What each probe sent this time answered. A refusal the availability record
+  // does not keep (a 400 or 404 that is not about credit, keys or hosts) used to
+  // leave the route reading "unknown" with no reason at all; the reason the
+  // provider gave is carried into the result instead.
+  const probeAnswers = new Map<string, ProviderHealthResult>();
   if (!byok) {
     const unknown = new Map<string, ProviderHealthTarget>();
     for (const call of routesByCall) {
@@ -191,7 +196,11 @@ export async function checkRunModelReadiness(args: RunReadinessArgs): Promise<Ru
     // Probes record their own outcome; a failed probe is a result, not an error.
     await Promise.all(
       Array.from(unknown.values()).map((target) =>
-        probe(target).catch((err) => {
+        probe(target)
+          .then((result) => {
+            if (result) probeAnswers.set(routeKey(target), result);
+          })
+          .catch((err) => {
           logger.warn('model_route_readiness_probe_failed', {
             provider: target.provider,
             model: target.model,
@@ -208,6 +217,15 @@ export async function checkRunModelReadiness(args: RunReadinessArgs): Promise<Ru
     const routes: RouteReadiness[] = call.routes.map((target) => {
       if (ownKeyRoute) return ownKeyRoute(target);
       const record = routeAvailability(target.provider, target.model);
+      if (!record) {
+        const answer = probeAnswers.get(routeKey(target));
+        if (answer && !answer.ok) {
+          const why = [answer.classification ?? 'refused', answer.status ? `HTTP ${answer.status}` : null, answer.error ?? null]
+            .filter(Boolean)
+            .join(': ');
+          return { ...target, state: 'unknown', reason: why };
+        }
+      }
       return { ...target, state: record?.state ?? 'unknown', ...(record?.reason ? { reason: record.reason } : {}) };
     });
     return {

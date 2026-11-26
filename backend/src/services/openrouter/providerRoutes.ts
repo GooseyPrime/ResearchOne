@@ -175,6 +175,27 @@ export interface SameModelEntry {
  * change the date and the notes above. Do not add an id you could not confirm.
  */
 export const SAME_MODEL_PROVIDER_TABLE: readonly SameModelEntry[] = [
+  // Added 26 Nov 2026, the defaults from that date. Confirmed the same day:
+  // OpenRouter lists each with endpoints (Kimi K3.1 Pro: 6 hosts; DeepSeek
+  // V4.1 Flash 1017: dozens), and the Hugging Face Inference Providers mapping
+  // lists each as `live` (Kimi K3.1 Pro: together; DeepSeek V4.1 Flash 1017:
+  // novita, baseten).
+  {
+    name: 'moonshotai/Kimi-K3.1-Pro',
+    claude: false,
+    servedBy: {
+      openrouter: 'moonshotai/kimi-k3.1-pro',
+      huggingface_inference: 'moonshotai/Kimi-K3.1-Pro',
+    },
+  },
+  {
+    name: 'deepseek-ai/DeepSeek-V4.1-Flash-1017',
+    claude: false,
+    servedBy: {
+      openrouter: 'deepseek/deepseek-v4.1-flash-1017',
+      huggingface_inference: 'deepseek-ai/DeepSeek-V4.1-Flash-1017',
+    },
+  },
   {
     name: 'moonshotai/Kimi-K2-Thinking',
     claude: false,

@@ -48,9 +48,6 @@ vi.mock('../../components/billing/FreeLifetimeQuotaBanner', () => ({
   default: () => null,
 }));
 
-vi.mock('../../components/research/ResearchClarificationChat', () => ({
-  default: () => <div data-testid="clarification-chat" />,
-}));
 
 vi.mock('../../utils/api', async () => {
   const actual = await vi.importActual<typeof import('../../utils/api')>('../../utils/api');
@@ -67,9 +64,6 @@ vi.mock('../../utils/supplementalIngestNotifications', () => ({
   applySupplementalIngestNotifications: vi.fn(),
 }));
 
-vi.mock('../../utils/clarifyingQuestions', () => ({
-  buildClarifyingQuestions: () => [],
-}));
 
 const QUESTION = /What do you need to know, compare, or produce/;
 
@@ -175,6 +169,15 @@ describe('ResearchRequestForm — the request itself', () => {
     expect(call.query).toBe('Where is lithium recycling capacity being built?');
     expect(call.engineVersion).toBeUndefined();
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/app/run/run-1#plan'));
+  });
+
+  it('goes straight to planning on submit, with no follow-up questions, even for a short question', async () => {
+    renderForm();
+    const sent = await submitWith('Kimi K3 benchmarks');
+    expect(sent.query).toBe('Kimi K3 benchmarks');
+    expect(sent.supplemental ?? '').not.toContain('Clarifications');
+    expect(screen.queryByText('Optional clarifications')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Skip clarifications' })).toBeNull();
   });
 
   it('will not submit an empty question', () => {

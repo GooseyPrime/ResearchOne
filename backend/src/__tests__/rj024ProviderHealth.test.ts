@@ -132,8 +132,8 @@ beforeEach(() => {
 });
 
 /** The planner's model: the first model a provider that serves it is asked with. */
-const KIMI = 'moonshotai/kimi-k2-thinking';
-const KIMI_HUB = 'moonshotai/Kimi-K2-Thinking';
+const KIMI = 'moonshotai/kimi-k3.1-pro';
+const KIMI_HUB = 'moonshotai/Kimi-K3.1-Pro';
 const KIMI_ON_TOGETHER = 'moonshotai/Kimi-K2-Thinking-Test-Together';
 const KIMI_ON_NVIDIA = 'moonshotai/kimi-k2-thinking-test-nim';
 const CLAUDE_DIRECT = 'claude-sonnet-4-5-20250929';
@@ -360,7 +360,7 @@ describe('how many providers serve each role model (RJ-025)', () => {
     expect(planner).toMatchObject({
       role: 'planner',
       model: KIMI,
-      modelName: 'moonshotai/Kimi-K2-Thinking',
+      modelName: 'moonshotai/Kimi-K3.1-Pro',
       servedBy: ['openrouter', 'huggingface_inference'],
       providerCount: 2,
       servedByWithKey: ['openrouter', 'huggingface_inference'],
@@ -370,13 +370,13 @@ describe('how many providers serve each role model (RJ-025)', () => {
     });
   });
 
-  it('counts two providers for every role, Double-check and the internal challenger included, since they moved to Kimi K2 Thinking (13 Oct 2026)', () => {
+  it('counts two providers for every role, Double-check and the internal challenger included, on DeepSeek V4.1 Flash since 26 Nov 2026', () => {
     const coverage = roleProviderCoverage(everyKey);
     expect(coverage.filter((entry) => entry.singleProvider).map((entry) => entry.role)).toEqual([]);
     for (const role of ['double_check', 'internal_challenger']) {
       expect(coverage.find((entry) => entry.role === role)).toMatchObject({
-        model: 'moonshotai/kimi-k2-thinking',
-        modelName: 'moonshotai/Kimi-K2-Thinking',
+        model: 'deepseek/deepseek-v4.1-flash-1017',
+        modelName: 'deepseek-ai/DeepSeek-V4.1-Flash-1017',
         servedBy: ['openrouter', 'huggingface_inference'],
         providerCount: 2,
         ownProviderConfirmed: true,
@@ -398,9 +398,9 @@ describe('how many providers serve each role model (RJ-025)', () => {
   it('lists a different model the same role uses for one kind of research, or as the server setting', () => {
     const coverage = roleProviderCoverage(everyKey);
     const planner = coverage.find((entry) => entry.role === 'planner');
-    expect(planner?.otherModels).toEqual([
-      expect.objectContaining({ usedFor: 'PATENT_GAP_ANALYSIS', model: 'deepseek/deepseek-r1-0528', providerCount: 2, singleProvider: false }),
-    ]);
+    // Since 26 Nov 2026 the planner uses Kimi K3.1 Pro for every kind of
+    // research and as the server setting, so it lists no other model.
+    expect(planner?.otherModels).toBeUndefined();
     const synthesizer = coverage.find((entry) => entry.role === 'synthesizer');
     expect(synthesizer?.otherModels).toEqual([
       expect.objectContaining({
@@ -494,7 +494,7 @@ describe('POST /api/admin/providers/health', () => {
       );
     }
     expect(res.body.roles.find((entry: { role: string }) => entry.role === 'retriever')).toMatchObject({
-      model: 'deepseek/deepseek-v3.2',
+      model: 'deepseek/deepseek-v4.1-flash-1017',
       providerCount: 2,
       providerCountWithKey: 2,
       singleProvider: false,

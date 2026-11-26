@@ -47,8 +47,13 @@ function pushDossierOwnership(conds: string[], params: unknown[], ctx: DossierAu
   appendOwnershipFilter(conds, params, { userId: ctx.userId, orgId: ctx.orgId });
 }
 
-function dossierOwnershipSql(ctx: DossierAuthContext, userParam: number, orgParam: number): string {
-  return buildOwnershipSql('', userParam, orgParam);
+/**
+ * Ownership filter on the dossier view. Pass the view's alias whenever the
+ * query joins another table that also has user_id / org_id (reports does):
+ * unqualified, Postgres rejects the column as ambiguous and the request fails.
+ */
+function dossierOwnershipSql(ctx: DossierAuthContext, userParam: number, orgParam: number, alias = ''): string {
+  return buildOwnershipSql(alias, userParam, orgParam);
 }
 
 function parseTierSummary(raw: unknown): Record<string, unknown> | null {
@@ -398,7 +403,7 @@ export async function getDossierReportHistory(
               COALESCE(r.root_report_id, r.id) AS root_report_id
        FROM v_dossier d
        LEFT JOIN reports r ON r.id = d.report_id
-       WHERE d.dossier_id = $1::uuid AND ${dossierOwnershipSql(ctx, 2, 3)}
+       WHERE d.dossier_id = $1::uuid AND ${dossierOwnershipSql(ctx, 2, 3, 'd')}
        LIMIT 1`,
       [dossierId, ctx.userId, ctx.orgId],
     );
@@ -431,7 +436,7 @@ export async function getDossierReportHistory(
          WHERE COALESCE(r.root_report_id, r.id) = $1::uuid
            AND EXISTS (
              SELECT 1 FROM v_dossier vd
-             WHERE vd.report_id = r.id AND ${dossierOwnershipSql(ctx, 2, 3)}
+             WHERE vd.report_id = r.id AND ${dossierOwnershipSql(ctx, 2, 3, 'vd')}
            )
          ORDER BY r.version_number ASC NULLS LAST, r.created_at ASC`,
         [rootId, ctx.userId, ctx.orgId],

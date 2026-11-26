@@ -221,6 +221,33 @@ testimony + Thinking architecture. PRs #39 and #40 banned them
 categorically as "RLHF-aligned" — that was the operational
 misinterpretation this document now corrects.
 
+## Defaults from 26 Nov 2026
+
+Kimi K2 Thinking and Hermes 4 70B had no host left on the production
+OpenRouter account, so every run stopped before it started. The defaults moved
+to two newer open-weights models, each served by several OpenRouter hosts and
+by Hugging Face Inference (the same model on both):
+
+| Roles | Model | Hosts on OpenRouter (26 Nov 2026) |
+|---|---|---|
+| Planning, reasoning, every writing role | `moonshotai/kimi-k3.1-pro` | 6 |
+| Double-check, internal challenger, utility roles | `deepseek/deepseek-v4.1-flash-1017` | dozens |
+
+The checker is a different model family from the writer, so the check is not
+the writer grading its own work.
+
+**Behavioral evidence (26 Nov 2026).** The three adversarial smoke prompts
+(`backend/scripts/adversarial-research-smoke.ts`) plus two prompts on widely
+dismissed topics (military UAP reports; the 1947 Roswell record) were sent
+under `REASONING_FIRST_PREAMBLE` to both models and to Hermes 4 405B. None
+refused, sanitized or dismissed by recall; each separated evidence from
+speculation. Both new defaults are thinking models: with a 2,500-token limit
+they spent the whole budget reasoning and returned no answer, and with room
+they answered in about 3,500–4,300 tokens. Every role's token limit was raised
+to at least 16,384 for that reason. DeepSeek V4 Pro reasoned past 8,000 tokens
+without answering and is not a default until its limits and time-outs are
+measured.
+
 ## Currently-approved V2 PRIMARIES (updated PR #42)
 
 The 2026-04-28-AM V2 outage (#1) showed every Hermes/Dolphin/Euryale

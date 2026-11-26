@@ -129,12 +129,14 @@ import { CUSTOMER_FAILURE_MESSAGES, customerFailureMessage } from '../services/r
 import { runChargeDecision } from '../services/billing/runChargeDecision';
 import type { AxiosError } from 'axios';
 
-const KIMI = 'moonshotai/kimi-k2-thinking';
-const KIMI_HUB = 'moonshotai/Kimi-K2-Thinking';
-const QWEN = 'qwen/qwen3-235b-a22b-thinking-2507';
-const QWEN_HUB = 'Qwen/Qwen3-235B-A22B-Thinking-2507';
+const KIMI = 'moonshotai/kimi-k3.1-pro';
+const KIMI_HUB = 'moonshotai/Kimi-K3.1-Pro';
+const QWEN = 'moonshotai/kimi-k3.1-pro';
+const QWEN_HUB = 'moonshotai/Kimi-K3.1-Pro';
 const V32 = 'deepseek/deepseek-v3.2';
 const V32_HUB = 'deepseek-ai/DeepSeek-V3.2';
+const FLASH = 'deepseek/deepseek-v4.1-flash-1017';
+const FLASH_HUB = 'deepseek-ai/DeepSeek-V4.1-Flash-1017';
 const R1_0528 = 'deepseek/deepseek-r1-0528';
 const R1_0528_HUB = 'deepseek-ai/DeepSeek-R1-0528';
 const HERMES4 = 'nousresearch/hermes-4-70b';
@@ -346,47 +348,48 @@ describe('the routes of every role, with every provider configured', () => {
       ])
     );
     const kimi = [`openrouter:${KIMI}`, `huggingface_inference:${KIMI_HUB}`];
-    const qwen = [`openrouter:${QWEN}`, `huggingface_inference:${QWEN_HUB}`];
-    const v32 = [`openrouter:${V32}`, `huggingface_inference:${V32_HUB}`];
-    // Double-check and the internal challenger use Kimi K2 Thinking since 13 Oct 2026.
+    const flash = [`openrouter:${FLASH}`, `huggingface_inference:${FLASH_HUB}`];
+    // From 26 Nov 2026: Kimi K3.1 Pro plans, reasons and writes; DeepSeek V4.1
+    // Flash runs the independent double-check, the internal challenger and the
+    // utility roles.
     expect(chain).toEqual({
       planner: kimi,
-      retriever: v32,
-      source_class_classifier: v32,
-      reasoner: qwen,
-      strongest_form: qwen,
-      double_check: kimi,
-      synthesizer: qwen,
-      verifier: v32,
-      plain_language_synthesizer: qwen,
-      outline_architect: qwen,
-      section_drafter: qwen,
-      internal_challenger: kimi,
-      coherence_refiner: qwen,
-      revision_intake: v32,
-      report_locator: v32,
-      change_planner: qwen,
-      section_rewriter: qwen,
-      citation_integrity_checker: v32,
-      citation_formatter: v32,
-      final_revision_verifier: v32,
-      contract_auditor: v32,
-      market_scout: v32,
-      competitor_mapper: v32,
-      demand_signal_analyst: v32,
-      feasibility_architect: v32,
-      story_verifier: v32,
-      timeline_reconstructor: v32,
-      data_analysis_specialist: v32,
-      quantitative_quality_auditor: v32,
+      retriever: flash,
+      source_class_classifier: flash,
+      reasoner: kimi,
+      strongest_form: kimi,
+      double_check: flash,
+      synthesizer: kimi,
+      verifier: flash,
+      plain_language_synthesizer: kimi,
+      outline_architect: kimi,
+      section_drafter: kimi,
+      internal_challenger: flash,
+      coherence_refiner: kimi,
+      revision_intake: flash,
+      report_locator: flash,
+      change_planner: kimi,
+      section_rewriter: kimi,
+      citation_integrity_checker: flash,
+      citation_formatter: flash,
+      final_revision_verifier: flash,
+      contract_auditor: flash,
+      market_scout: flash,
+      competitor_mapper: flash,
+      demand_signal_analyst: flash,
+      feasibility_architect: flash,
+      story_verifier: flash,
+      timeline_reconstructor: flash,
+      data_analysis_specialist: flash,
+      quantitative_quality_auditor: flash,
     });
   });
 
-  it('uses R1-0528 on both providers for the patent planner, the one role whose model differs by kind of research', () => {
+  it('uses Kimi K3.1 Pro on both providers for the patent planner too, since 26 Nov 2026', () => {
     const routes = routesWithEveryKey('planner', V2_MODE_PRESETS.PATENT_GAP_ANALYSIS.planner.primary);
     expect(routes).toEqual([
-      { model: R1_0528, position: 'primary' },
-      { model: R1_0528_HUB, via: 'huggingface_inference', position: 'cross_provider' },
+      { model: KIMI, position: 'primary' },
+      { model: KIMI_HUB, via: 'huggingface_inference', position: 'cross_provider' },
     ]);
   });
 
