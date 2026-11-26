@@ -3395,7 +3395,7 @@ ${reportForGates(generatedReport.markdown)}`,
     try {
       await query(
         `UPDATE research_runs
-            SET status=$5,
+            SET status=$5::job_status,
                 error_message=$1,
                 failed_stage=$2,
                 failure_meta=$3,
@@ -3404,7 +3404,12 @@ ${reportForGates(generatedReport.markdown)}`,
                 progress_percent=NULL,
                 progress_message=NULL,
                 progress_updated_at=NULL,
-                resume_job_payload=CASE WHEN $5 = 'aborted' THEN NULL ELSE $6 END
+                -- The status parameter is cast to the enum at every use.
+                -- Comparing it to a text literal as well made Postgres deduce
+                -- two types for one parameter (42P08), so every failed run fell
+                -- to the fallback below and lost its 'aborted' status and
+                -- resume decision.
+                resume_job_payload=CASE WHEN $5::job_status = 'aborted'::job_status THEN NULL ELSE $6 END
           WHERE id=$4`,
         [
           failureDetails.errorMessage,

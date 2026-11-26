@@ -124,12 +124,14 @@ import {
 import { flattenModelOverridesForPrefill } from '../services/research/spinoffService';
 import { presetsWithoutBackupModels } from '../api/routes/research';
 
-const KIMI = 'moonshotai/kimi-k2-thinking';
-const KIMI_HUB = 'moonshotai/Kimi-K2-Thinking';
-const QWEN = 'qwen/qwen3-235b-a22b-thinking-2507';
-const QWEN_HUB = 'Qwen/Qwen3-235B-A22B-Thinking-2507';
-const V32 = 'deepseek/deepseek-v3.2';
-const V32_HUB = 'deepseek-ai/DeepSeek-V3.2';
+const FLASH_ID = 'deepseek/deepseek-v4.1-flash-1017';
+const FLASH_HUB_ID = 'deepseek-ai/DeepSeek-V4.1-Flash-1017';
+const KIMI = 'moonshotai/kimi-k3.1-pro';
+const KIMI_HUB = 'moonshotai/Kimi-K3.1-Pro';
+const QWEN = 'moonshotai/kimi-k3.1-pro';
+const QWEN_HUB = 'moonshotai/Kimi-K3.1-Pro';
+const V32 = FLASH_ID;
+const V32_HUB = FLASH_HUB_ID;
 const HERMES4 = 'nousresearch/hermes-4-70b';
 const HERMES4_HUB = 'NousResearch/Hermes-4-70B';
 
@@ -181,8 +183,9 @@ describe('every route of a stage is the exact model it chose, on any provider th
     expect(byRole.planner).toEqual([['openrouter', KIMI], ['huggingface_inference', KIMI_HUB]]);
     expect(byRole.reasoner).toEqual([['openrouter', QWEN], ['huggingface_inference', QWEN_HUB]]);
     expect(byRole.verifier).toEqual([['openrouter', V32], ['huggingface_inference', V32_HUB]]);
-    // Double-check moved to Kimi K2 Thinking on 13 Oct 2026: OpenRouter first, then the same model on Hugging Face.
-    expect(byRole.double_check).toEqual([['openrouter', KIMI], ['huggingface_inference', KIMI_HUB]]);
+    // Double-check runs on DeepSeek V4.1 Flash from 26 Nov 2026, a different family from the writer:
+    // OpenRouter first, then the same model on Hugging Face.
+    expect(byRole.double_check).toEqual([['openrouter', V32], ['huggingface_inference', V32_HUB]]);
   });
 
   it('never probes Anthropic, Together or NVIDIA for a model they do not serve, though each has a key', async () => {
@@ -274,15 +277,15 @@ describe('a key alone is not proof a route can answer', () => {
   });
 });
 
-describe('Double-check on Kimi K2 Thinking (13 Oct 2026): OpenRouter first, Hugging Face as the same-model backup', () => {
+describe('Double-check on DeepSeek V4.1 Flash (26 Nov 2026): OpenRouter first, Hugging Face as the same-model backup', () => {
   it('is ready through OpenRouter while the Hugging Face account is empty, and no other model is probed', async () => {
     h.answers.huggingface_inference = () => 402;
     const readiness = await checkRunModelReadiness(research);
     expect(readiness.ready).toBe(true);
     const doubleCheck = readiness.stages.find((stage) => stage.role === 'double_check');
     expect(doubleCheck?.routes).toEqual([
-      { provider: 'openrouter', model: KIMI, state: 'usable' },
-      { provider: 'huggingface_inference', model: KIMI_HUB, state: 'not_usable', reason: 'quota_exceeded' },
+      { provider: 'openrouter', model: V32, state: 'usable' },
+      { provider: 'huggingface_inference', model: V32_HUB, state: 'not_usable', reason: 'quota_exceeded' },
     ]);
     // Only the stages' own models were ever asked: nothing in their place.
     const ownModels = new Set([KIMI, KIMI_HUB, QWEN, QWEN_HUB, V32, V32_HUB]);
@@ -294,17 +297,39 @@ describe('Double-check on Kimi K2 Thinking (13 Oct 2026): OpenRouter first, Hugg
     const readiness = await checkRunModelReadiness(research);
     expect(readiness.ready).toBe(true);
     expect(readiness.stages.find((stage) => stage.role === 'double_check')?.routes).toEqual([
-      { provider: 'openrouter', model: KIMI, state: 'usable' },
+      { provider: 'openrouter', model: V32, state: 'usable' },
     ]);
   });
 
   it('stops before any work only when both OpenRouter and Hugging Face refuse the same model', async () => {
-    h.answers.openrouter = (model) => (model === KIMI ? 402 : 'ok');
-    h.answers.huggingface_inference = (model) => (model === KIMI_HUB ? 402 : 'ok');
+    h.answers.openrouter = (model) => (model === V32 ? 402 : 'ok');
+    h.answers.huggingface_inference = (model) => (model === V32_HUB ? 402 : 'ok');
     const err = await assertRunModelRoutesReady(research).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ModelRoutesUnavailableError);
     const stages = (err as ModelRoutesUnavailableError).failureMeta.unavailableStages as Array<{ role: string }>;
-    expect(stages.map((stage) => stage.role).sort()).toEqual(['double_check', 'planner']);
+    expect(stages.map((stage) => stage.role).sort()).toEqual(['double_check', 'retriever', 'verifier']);
+  });
+});
+
+describe('a refusal the availability record does not keep (26 Nov 2026)', () => {
+  it('names what the provider answered instead of reading "unknown" with no reason', async () => {
+    // OpenRouter refuses the planner model with a plain 400 that is not about
+    // credit, keys or hosts. Before, the stage read "openrouter unknown" and the
+    // failure gave no reason at all.
+    const restriction = 'No endpoints available matching your account provider restrictions';
+    h.answers.openrouter = (model) => (model === KIMI ? { status: 400, message: restriction } : 'ok');
+    h.answers.huggingface_inference = (model) => (model === KIMI_HUB ? 402 : 'ok');
+    const err = await assertRunModelRoutesReady(research).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ModelRoutesUnavailableError);
+    const planner = ((err as ModelRoutesUnavailableError).failureMeta.unavailableStages as Array<{
+      role: string;
+      routes: Array<{ provider: string; state: string; reason?: string }>;
+    }>).find((stage) => stage.role === 'planner');
+    const openrouter = planner?.routes.find((route) => route.provider === 'openrouter');
+    expect(openrouter?.state).toBe('unknown');
+    expect(openrouter?.reason).toContain('HTTP 400');
+    expect(openrouter?.reason).toContain(restriction);
+    expect((err as Error).message).toContain(restriction);
   });
 });
 
@@ -336,10 +361,10 @@ describe('a run with the caller own OpenRouter key', () => {
     const verifier = readiness.stages.find((stage) => stage.role === 'verifier');
     expect(verifier?.routes).toEqual([{ provider: 'openrouter', model: V32, state: 'unverified', reason: 'key_accepted_and_model_listed' }]);
     expect(verifier).toMatchObject({ usable: true, verified: false });
-    // Double-check uses Kimi K2 Thinking, which OpenRouter lists, so every stage may start.
+    // Double-check uses DeepSeek V4.1 Flash, which OpenRouter lists, so every stage may start.
     expect(readiness.unavailable).toEqual([]);
     expect(readiness.stages.find((stage) => stage.role === 'double_check')?.routes).toEqual([
-      { provider: 'openrouter', model: KIMI, state: 'unverified', reason: 'key_accepted_and_model_listed' },
+      { provider: 'openrouter', model: V32, state: 'unverified', reason: 'key_accepted_and_model_listed' },
     ]);
   });
 

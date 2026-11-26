@@ -270,6 +270,14 @@ const BASE_ALLOWLIST = [
   'moonshotai/kimi-k2-thinking',
   'qwen/qwen3-235b-a22b-thinking-2507',
 
+  // ── V2 / OpenRouter critical-path primaries from 26 Nov 2026 ─────────────
+  // Kimi K2 Thinking and Hermes 4 70B had no host left on the production
+  // OpenRouter account. Both new defaults passed the adversarial smoke prompts
+  // under REASONING_FIRST_PREAMBLE on 26 Nov 2026 (no refusal, no dismissal by
+  // recall) and have several hosts each. See docs/V2_MODEL_SELECTION_CRITERIA.md.
+  'moonshotai/kimi-k3.1-pro',
+  'deepseek/deepseek-v4.1-flash-1017',
+
   // ── V2 / OpenRouter adversarial-role defaults (Hermes; runtime-probed) ────
   // Default V2 double-check / internal_challenger presets (2026-05-10). Chosen after
   // `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` and

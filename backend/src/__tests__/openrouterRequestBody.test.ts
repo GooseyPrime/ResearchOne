@@ -85,6 +85,8 @@ describe('OpenRouter request body — provider block', () => {
       'deepseek/deepseek-r1-0528',
       'moonshotai/kimi-k2-thinking',
       'qwen/qwen3-235b-a22b-thinking-2507',
+      'moonshotai/kimi-k3.1-pro',
+      'deepseek/deepseek-v4.1-flash-1017',
     ]).toContain(model);
   });
 

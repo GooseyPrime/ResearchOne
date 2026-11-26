@@ -20,8 +20,8 @@ import { isSameModel } from '../services/openrouter/providerRoutes';
 import { recordRouteAnswered, recordRouteRefused, routeState } from '../services/openrouter/routeAvailability';
 import { REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../services/reasoning/reasoningModelPolicy';
 
-const KIMI = 'moonshotai/kimi-k2-thinking';
-const KIMI_HUB = 'moonshotai/Kimi-K2-Thinking';
+const KIMI = 'moonshotai/kimi-k3.1-pro';
+const KIMI_HUB = 'moonshotai/Kimi-K3.1-Pro';
 
 const was = { openrouter: config.openrouter.apiKey, hf: config.hfToken, anthropic: config.anthropic.apiKey, nvidia: config.nvidia.apiKey, together: config.together.apiKey };
 
@@ -116,8 +116,21 @@ describe('preflightModelRoutes', () => {
     const summary = await preflightModelRoutes({ probe });
     expect(summary.ok).toBe(false);
     const roles = new Set(summary.rolesWithoutRoute.map((entry) => entry.role));
-    // Kimi K2 Thinking: the planner (except patent research), Double-check and the internal challenger.
-    expect(roles).toEqual(new Set(['planner', 'double_check', 'internal_challenger']));
+    // Kimi K3.1 Pro (26 Nov 2026): the planner and every reasoning and writing role.
+    expect(roles).toEqual(
+      new Set([
+        'planner',
+        'reasoner',
+        'change_planner',
+        'strongest_form',
+        'outline_architect',
+        'section_drafter',
+        'synthesizer',
+        'coherence_refiner',
+        'plain_language_synthesizer',
+        'section_rewriter',
+      ])
+    );
     for (const entry of summary.rolesWithoutRoute) {
       expect(entry.routes).toEqual([
         { provider: 'openrouter', model: KIMI, reason: 'quota_exceeded' },

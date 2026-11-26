@@ -292,10 +292,30 @@ describe('a report with no saved citations when findings are extracted', () => {
       `Research Query: When was the therapy approved?\n\nEvidence Chunks:\n${shown}\n\nReasoner Output:\nreasoning\n\nSynthesizer Output:\nThe trial met its primary endpoint [1]. Approval followed in December 2023 [2].\n\nExtract all discrete claims. Output JSON array only.`
     );
     const [endpoint, approval] = storedFindings();
+    // A chunk id copied from the passages the model was shown is real and is
+    // kept. A source id or chunk id it made up is filed as no link, instead of
+    // breaking the foreign key and rolling every finding back (23503).
     expect(endpoint.chunk_id).toBe(UNCITED);
-    expect(endpoint.source_id).toBe('not-a-source-id');
+    expect(endpoint.source_id).toBeNull();
     expect(endpoint.supporting_chunk_ids).toEqual([UNCITED, CITED_A]);
-    expect(approval.chunk_id).toBe(INVENTED);
+    expect(approval.chunk_id).toBeNull();
+  });
+
+  it('keeps an id the model wrote when the database holds it', async () => {
+    const realSource = '00000000-0000-4000-8000-00000000abcd';
+    mocks.callRoleModel.mockResolvedValue({
+      ...modelReply,
+      content: JSON.stringify([
+        { claim_text: 'The trial met its primary endpoint.', evidence_tier: 'strong_evidence', confidence: 0.9, supporting_chunk_ids: [UNCITED], source_ids: [realSource], tags: [] },
+      ]),
+    });
+    mocks.query.mockImplementation(async (sql: string, params?: unknown[]) =>
+      sql.includes('= ANY($1::uuid[])') ? ((params?.[0] as string[]) ?? []).map((id) => ({ id })) : []
+    );
+    await extract();
+    const [finding] = storedFindings();
+    expect(finding.chunk_id).toBe(UNCITED);
+    expect(finding.source_id).toBe(realSource);
   });
 
   it('is extracted as before when the saved citations cannot be read', async () => {

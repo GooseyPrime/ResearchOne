@@ -128,3 +128,13 @@ describe('POST /api/research/:id/cancel', () => {
     });
   });
 });
+
+describe('GET /api/research/:id with an id that is not a run id', () => {
+  it('answers 404 without asking the database, instead of a 500 from a failed uuid cast', async () => {
+    for (const path of ['plans', 'pending-plans']) {
+      const res = await request(appForTest()).get(`/api/research/${path}`);
+      expect(res.status).toBe(404);
+    }
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+});
