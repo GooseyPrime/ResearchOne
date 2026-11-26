@@ -14,7 +14,6 @@ import clsx from 'clsx';
 import { modelOverridesForRequest, modelRowsFromStoredOverrides, type RoleModelChoice } from '../../utils/modelOverrides';
 import AttachmentDropZone from './AttachmentDropZone';
 import ChallengePerspectiveSelector from './ChallengePerspectiveSelector';
-import ResearchClarificationChat from './ResearchClarificationChat';
 import ResearchOutputControls, {
   type ReportLengthPreset,
   normalizeReportFormats,
@@ -45,7 +44,6 @@ import {
   splitSupplementalAndPerspective,
 } from '../../utils/challengePerspective';
 import { applySupplementalIngestNotifications } from '../../utils/supplementalIngestNotifications';
-import { buildClarifyingQuestions } from '../../utils/clarifyingQuestions';
 import { liveResearchUrl } from '../../utils/researchRunRoutes';
 import { useStore } from '../../store/useStore';
 import { plainLabel } from '@/lib/researchone/plainWords';
@@ -172,10 +170,6 @@ export default function ResearchRequestForm() {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
 
-  const [clarifyOpen, setClarifyOpen] = useState(false);
-  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
-  const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
-
   const { selectedAddons, selectedAddonsForSubmit, toggleAddon, syncAddonsToUrl } =
     useResearchRunAddons(RESEARCH_RUN_ADDON_CATALOG_KEYS);
 
@@ -243,16 +237,6 @@ export default function ResearchRequestForm() {
     setOutputOpen(Boolean(slice.requestedFormats?.length) || typeof slice.targetWordCount === 'number');
   });
 
-  const clarityBlock = useMemo(() => {
-    const lines = clarifyQuestions
-      .map((question, idx) => {
-        const answer = (clarifyAnswers[idx] ?? '').trim();
-        return answer ? `- ${question}\n  ${answer}` : '';
-      })
-      .filter(Boolean);
-    return lines.length > 0 ? `Clarifications:\n${lines.join('\n')}` : '';
-  }, [clarifyAnswers, clarifyQuestions]);
-
   const resolvedFormats = normalizeReportFormats(reportFormats);
   const requestedFormats = resolvedFormats.includes('automatic') ? undefined : resolvedFormats;
   // Only send a word target when the user actually chose one; otherwise the
@@ -262,9 +246,8 @@ export default function ResearchRequestForm() {
   const modelOverrides = useMemo(() => modelOverridesForRequest(modelRows), [modelRows]);
 
   const mutation = useMutation({
-    mutationFn: (opts: { includeClarifications: boolean }) => {
-      const extra = opts.includeClarifications && clarityBlock ? `\n\n${clarityBlock}` : '';
-      const supplementalBody = `${supplemental.trim()}${extra}`.trim();
+    mutationFn: () => {
+      const supplementalBody = supplemental.trim();
       const tags = filterTags
         .split(',')
         .map((t) => t.trim())
@@ -306,17 +289,14 @@ export default function ResearchRequestForm() {
 
   const busy = mutation.isPending;
 
+  // Submitting goes straight to planning. The plan is shown before anything
+  // runs, and the planner reads the whole request (question, extra context,
+  // output choices), so a second round of fixed questions here only repeated
+  // what the form already asks.
   const submit = useCallback(() => {
     if (!query.trim() || busy) return;
-    const generated = buildClarifyingQuestions(query, { reportFormats: resolvedFormats });
-    if (generated.length === 0) {
-      mutation.mutate({ includeClarifications: false });
-      return;
-    }
-    setClarifyQuestions(generated);
-    setClarifyAnswers(Array.from({ length: generated.length }, () => ''));
-    setClarifyOpen(true);
-  }, [busy, mutation, query, resolvedFormats]);
+    mutation.mutate();
+  }, [busy, mutation, query]);
 
   return (
     <div className="space-y-5">
@@ -547,24 +527,6 @@ export default function ResearchRequestForm() {
         </button>
       </form>
 
-      {clarifyOpen ? (
-        <ResearchClarificationChat
-          questions={clarifyQuestions}
-          answers={clarifyAnswers}
-          onAnswerChange={(idx, value) =>
-            setClarifyAnswers((prev) => prev.map((item, i) => (i === idx ? value : item)))
-          }
-          onContinueWithoutAnswers={() => {
-            setClarifyOpen(false);
-            mutation.mutate({ includeClarifications: false });
-          }}
-          onSubmitAnswers={() => {
-            setClarifyOpen(false);
-            mutation.mutate({ includeClarifications: true });
-          }}
-          busy={busy}
-        />
-      ) : null}
     </div>
   );
 }

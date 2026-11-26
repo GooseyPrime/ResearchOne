@@ -281,40 +281,48 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   quantitative_quality_auditor: 0.15,
 };
 
+/** Time allowed for one OpenRouter completion request. */
+export const OPENROUTER_CALL_TIMEOUT_MS = 420_000;
+
 const MAX_TOKENS_MAP: Record<ModelRole, number> = {
+  // 26 Nov 2026: every role's default model is now a thinking model (Kimi
+  // K3.1 Pro, DeepSeek V4.1 Flash). Their reasoning counts against this limit,
+  // and in measurement a 2,500-token limit returned no answer at all while the
+  // same prompt needed ~3.5k–4.3k tokens. Every role gets at least 16,384; only
+  // the tokens actually generated are billed.
   // thinking-class models (Kimi K2, DeepSeek R1, Qwen3-235B) emit a reasoning
   // trace before output. planner and outline_architect are assigned Kimi K2
   // as primary across three objectives each — the prior 2048 ceiling truncated
   // mid-trace and broke all downstream JSON parsers.
   planner: 16384,
-  retriever: 4096,
-  source_class_classifier: 4096,
-  reasoner: 8192,
-  strongest_form: 8192,
-  double_check: 4096,
-  synthesizer: 8192,
-  verifier: 4096,
-  plain_language_synthesizer: 8192,
-  outline_architect: 8192,
-  section_drafter: 4096,
-  internal_challenger: 4096,
-  coherence_refiner: 6144,
-  revision_intake: 2048,
-  report_locator: 4096,
-  change_planner: 4096,
-  section_rewriter: 4096,
-  citation_integrity_checker: 3072,
-  citation_formatter: 4096,
-  final_revision_verifier: 4096,
-  contract_auditor: 4096,
-  market_scout: 8192,
-  competitor_mapper: 8192,
-  demand_signal_analyst: 8192,
-  feasibility_architect: 8192,
-  story_verifier: 8192,
-  timeline_reconstructor: 8192,
-  data_analysis_specialist: 8192,
-  quantitative_quality_auditor: 8192,
+  retriever: 16384,
+  source_class_classifier: 16384,
+  reasoner: 16384,
+  strongest_form: 16384,
+  double_check: 16384,
+  synthesizer: 16384,
+  verifier: 16384,
+  plain_language_synthesizer: 16384,
+  outline_architect: 16384,
+  section_drafter: 16384,
+  internal_challenger: 16384,
+  coherence_refiner: 16384,
+  revision_intake: 16384,
+  report_locator: 16384,
+  change_planner: 16384,
+  section_rewriter: 16384,
+  citation_integrity_checker: 16384,
+  citation_formatter: 16384,
+  final_revision_verifier: 16384,
+  contract_auditor: 16384,
+  market_scout: 16384,
+  competitor_mapper: 16384,
+  demand_signal_analyst: 16384,
+  feasibility_architect: 16384,
+  story_verifier: 16384,
+  timeline_reconstructor: 16384,
+  data_analysis_specialist: 16384,
+  quantitative_quality_auditor: 16384,
 };
 
 let hfClient: InferenceClient | null = null;
@@ -851,7 +859,9 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
 
     const response = await axios.post(`${config.openrouter.baseUrl}/chat/completions`, body, {
       headers,
-      timeout: 180000,
+      // Thinking models given room for a full reasoning trace (16k tokens)
+      // can take several minutes; 180s cut long sections off mid-answer.
+      timeout: OPENROUTER_CALL_TIMEOUT_MS,
     });
 
     const choice = response.data.choices?.[0];

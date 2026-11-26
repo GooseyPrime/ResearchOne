@@ -724,8 +724,16 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /api/research/:id - Get specific run
+// A run id is a UUID. Anything else (a mistyped path such as /plans) is not a
+// run: answer 404 instead of letting Postgres reject the value with a 500.
+const RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 router.get('/:id', async (req, res, next) => {
   try {
+    if (!RUN_ID_PATTERN.test(String(req.params.id ?? ''))) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
     const userId = req.auth?.userId ?? null;
     const orgId = req.auth?.orgId ?? null;
 

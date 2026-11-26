@@ -196,6 +196,20 @@ describe('getDossierReportHistory', () => {
     expect(historySql).toContain('v_dossier');
   });
 
+  it('qualifies the ownership columns, since the dossier view and reports both have user_id', async () => {
+    // Unqualified, Postgres rejected "user_id" as ambiguous and the request
+    // failed with a 500 (seen in production, Oct 2026).
+    queryOneMock.mockResolvedValueOnce({ report_id: REPORT_ID, root_report_id: ROOT_ID });
+    queryMock.mockResolvedValueOnce([]);
+    await getDossierReportHistory(DOSSIER_ID, ctx);
+    const anchorSql = String(queryOneMock.mock.calls[0]?.[0] ?? '');
+    expect(anchorSql).toContain('d.user_id = $2');
+    expect(anchorSql).toContain('d.org_id = $3');
+    expect(anchorSql).not.toMatch(/\(user_id = \$2/);
+    const historySql = String(queryMock.mock.calls[0]?.[0] ?? '');
+    expect(historySql).toContain('vd.user_id = $2');
+  });
+
   it('returns null when dossier anchor missing', async () => {
     queryOneMock.mockResolvedValueOnce(null);
     const result = await getDossierReportHistory(DOSSIER_ID, ctx);

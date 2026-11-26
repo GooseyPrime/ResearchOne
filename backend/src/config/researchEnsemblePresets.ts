@@ -273,6 +273,22 @@ const V2M = {
    */
   HERMES_3_70B_OR: 'nousresearch/hermes-3-llama-3.1-70b',
   /**
+   * Kimi K3.1 Pro (Moonshot, Oct 2026; 1M context). Six hosts on OpenRouter.
+   * Default for planning, reasoning and writing from 26 Nov 2026: Kimi K2
+   * Thinking had no host left on the production account. Passed the
+   * adversarial smoke prompts under REASONING_FIRST_PREAMBLE (26 Nov 2026):
+   * no refusal, no dismissal by recall; needs ~4k completion tokens per answer.
+   */
+  KIMI_K31_PRO: 'moonshotai/kimi-k3.1-pro',
+  /**
+   * DeepSeek V4.1 Flash (17 Oct 2026 snapshot; 1M context). Dozens of hosts on
+   * OpenRouter. Default for the independent double-check, the internal
+   * challenger and the utility roles from 26 Nov 2026 — a different model
+   * family from the writer, so the check is not the writer grading itself.
+   * Passed the same smoke prompts (26 Nov 2026).
+   */
+  DEEPSEEK_V41_FLASH: 'deepseek/deepseek-v4.1-flash-1017',
+  /**
    * Experimental opt-in only — listed in OpenRouter catalog but returned 404
    * "No allowed providers are available" under our runtime provider block in
    * production (2026-05-10). Not wired into V2 defaults.
@@ -305,23 +321,23 @@ const V2_UTILITIES: Record<
   // All utility roles default to DeepSeek V3.2 (11 upstream providers,
   // 100% uptime, low-refusal under our reasoning-first preamble),
   // falling back to V3.1 (also 11 providers) on rate limit.
-  retriever: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  source_class_classifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  citation_integrity_checker: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  citation_formatter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  revision_intake: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  report_locator: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  final_revision_verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  contract_auditor: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  market_scout: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  competitor_mapper: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  demand_signal_analyst: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  feasibility_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  story_verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  timeline_reconstructor: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  data_analysis_specialist: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-  quantitative_quality_auditor: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  retriever: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  source_class_classifier: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  verifier: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  citation_integrity_checker: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  citation_formatter: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  revision_intake: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  report_locator: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  final_revision_verifier: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  contract_auditor: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  market_scout: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  competitor_mapper: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  demand_signal_analyst: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  feasibility_architect: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  story_verifier: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  timeline_reconstructor: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  data_analysis_specialist: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
+  quantitative_quality_auditor: pair(V2M.DEEPSEEK_V41_FLASH, V2M.DEEPSEEK_V32),
 };
 
 function v2Mode(
@@ -362,83 +378,83 @@ function v2Mode(
  */
 export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRole, RoleModelPair>> = {
   GENERAL_EPISTEMIC_RESEARCH: v2Mode({
-    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
-    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
-    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    reasoner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    change_planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    strongest_form: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    outline_architect: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_drafter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    coherence_refiner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    plain_language_synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_rewriter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    double_check: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
+    internal_challenger: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
   }),
 
   INVESTIGATIVE_SYNTHESIS: v2Mode({
-    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
-    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
-    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    reasoner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    change_planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    strongest_form: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    outline_architect: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_drafter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    coherence_refiner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    plain_language_synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_rewriter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    double_check: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
+    internal_challenger: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
   }),
 
   PATENT_GAP_ANALYSIS: v2Mode({
     // Patent analysis: R1 primary on planner for precise claim-by-claim
     // step-by-step reasoning; Qwen3 primary on reasoner/synthesizer for
     // large patent corpus ingestion (256k context).
-    planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
-    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    reasoner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    change_planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    strongest_form: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    outline_architect: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_drafter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    coherence_refiner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    plain_language_synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_rewriter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    double_check: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
+    internal_challenger: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
   }),
 
   NOVEL_APPLICATION_DISCOVERY: v2Mode({
-    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_R1),
-    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
-    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    reasoner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    change_planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    strongest_form: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    outline_architect: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_drafter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    coherence_refiner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    plain_language_synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_rewriter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    double_check: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
+    internal_challenger: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
   }),
 
   ANOMALY_CORRELATION: v2Mode({
     // Anomaly objective shares the same Hermes adversarial ladder as other
     // objectives — Euryale/Dolphin Venice failed runtime probes (2026-05-10).
-    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
-    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    double_check: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
-    internal_challenger: pair(V2M.KIMI_K2_THINKING, V2M.HERMES_4_70B_OR),
+    planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    reasoner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    change_planner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    strongest_form: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    outline_architect: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_drafter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    coherence_refiner: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    plain_language_synthesizer: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    section_rewriter: pair(V2M.KIMI_K31_PRO, V2M.DEEPSEEK_V41_FLASH),
+    double_check: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
+    internal_challenger: pair(V2M.DEEPSEEK_V41_FLASH, V2M.KIMI_K31_PRO),
   }),
 };
 
